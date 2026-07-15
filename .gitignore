@@ -1,0 +1,11 @@
+node_modules/
+*.roughcut.fcpxml
+*.roughcut.json
+*.mov
+*.mp4
+*.m4v
+*.mkv
+*.avi
+*.wav
+*.aiff
+.DS_Store

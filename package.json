@@ -1,0 +1,17 @@
+{
+  "name": "roughcut",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Create a silence-cut Final Cut Pro timeline without transcoding media.",
+  "bin": {
+    "roughcut": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node ./src/cli.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
