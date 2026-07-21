@@ -99,3 +99,39 @@ test("runtime extraction selects and verifies only the requested executable", as
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("Windows runtime extraction passes complex paths in an encoded PowerShell command", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "roughcut-windows-extract-test-"));
+  try {
+    const body = Buffer.from("trusted Windows executable fixture");
+    const archive = path.join(directory, "source user's ‘démo’.zip");
+    const destination = path.join(directory, "output with spaces", "démo");
+    await extractRuntimeFiles(archive, [{
+      key: "ffmpeg",
+      entrySuffix: "/bin/ffmpeg.exe",
+      fileName: "ffmpeg.exe",
+      exactBytes: body.length,
+      sha256: createHash("sha256").update(body).digest("hex"),
+    }], destination, {
+      platform: "win32",
+      runCommand: async (command, args) => {
+        assert.equal(command, "powershell.exe");
+        assert.deepEqual(args.slice(0, -1), ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+        const script = Buffer.from(args.at(-1), "base64").toString("utf16le");
+        assert.match(script, /\$ErrorActionPreference = 'Stop'/);
+        assert.match(script, /\[Console\]::OutputEncoding/);
+        const encodedPaths = [...script.matchAll(/FromBase64String\('([^']+)'\)/g)]
+          .map((match) => Buffer.from(match[1], "base64").toString("utf16le"));
+        assert.deepEqual(encodedPaths, [archive, path.join(destination, "archive")]);
+        assert.equal(script.includes(archive), false);
+        assert.match(script, /Expand-Archive -LiteralPath \$archivePath -DestinationPath \$archiveDirectory -Force/);
+        const extractedRoot = path.join(destination, "archive");
+        await mkdir(path.join(extractedRoot, "release", "bin"), { recursive: true });
+        await writeFile(path.join(extractedRoot, "release", "bin", "ffmpeg.exe"), body);
+      },
+    });
+    assert.deepEqual(await readFile(path.join(destination, "ffmpeg.exe")), body);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
