@@ -2,27 +2,36 @@
 
 import { access, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createFcpxml } from "./fcpxml.js";
 import { detectSilences, probeMedia } from "./media.js";
 import { chooseProjectResolution } from "./resolution.js";
-import { buildSegments } from "./segments.js";
+import { addTextCuts, buildSegments } from "./segments.js";
+import { detectTextEdits } from "./text-edits.js";
+import { DEFAULT_VAD_MODEL, DEFAULT_WHISPER_MODEL, transcribeMedia } from "./transcribe.js";
+import { createTimelineDocument, timelineExportFor } from "./timeline-export.js";
 
-const HELP = `roughcut — create a silence-cut Final Cut Pro timeline
+const HELP = `openroughcut — create a silence-cut editable timeline
 
 Usage:
-  roughcut <video-file> [options]
+  openroughcut <video-file> [options]
 
 Options:
-  -o, --output <path>          FCPXML output path
+  -o, --output <path>          Timeline output path
+  --format <editor>            final-cut, premiere, or resolve (default: final-cut)
   --threshold <dB>            Silence threshold (default: -35)
   --minimum-silence <seconds> Minimum silence to shorten (default: 0.7)
   --keep-pause <seconds>      Pause retained inside each cut (default: 0.18)
   --project-resolution <size> Use source, 4k, or full-hd without prompting
+  --transcribe                Detect strong duplicate takes and false starts
+  --whisper-model <path>      Whisper GGML model (default: .models/ggml-base.bin)
+  --whisper-vad-model <path>  Silero VAD model used to reject non-speech
+  --language <code>           Spoken language or auto (default: auto)
+  --text-confidence <number>  Auto-remove threshold from 0 to 1 (default: 0.9)
+  --text-suggestions-only     Report text candidates without applying them
   --no-report                 Do not write the JSON cut report
   -h, --help                  Show this help
 
 Example:
-  roughcut recording.mov --threshold -35 --minimum-silence 0.7 --keep-pause 0.18
+  openroughcut recording.mov --threshold -35 --minimum-silence 0.7 --keep-pause 0.18
 `;
 
 function readNumber(value, name) {
@@ -32,11 +41,25 @@ function readNumber(value, name) {
 }
 
 export function parseArgs(argv) {
-  const options = { thresholdDb: -35, minimumSilence: 0.7, keepPause: 0.18, report: true };
+  const options = {
+    thresholdDb: -35,
+    minimumSilence: 0.7,
+    keepPause: 0.18,
+    report: true,
+    language: "auto",
+    textConfidence: 0.9,
+    applyTextEdits: true,
+    format: "final-cut",
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "-h" || argument === "--help") options.help = true;
     else if (argument === "--no-report") options.report = false;
+    else if (argument === "--transcribe") options.transcribe = true;
+    else if (argument === "--text-suggestions-only") {
+      options.transcribe = true;
+      options.applyTextEdits = false;
+    }
     else if (argument === "-o" || argument === "--output") {
       options.output = argv[++index];
       if (!options.output) throw new Error(`${argument} requires a path.`);
@@ -44,10 +67,27 @@ export function parseArgs(argv) {
     else if (argument === "--threshold") options.thresholdDb = readNumber(argv[++index], "--threshold");
     else if (argument === "--minimum-silence") options.minimumSilence = readNumber(argv[++index], "--minimum-silence");
     else if (argument === "--keep-pause") options.keepPause = readNumber(argv[++index], "--keep-pause");
+    else if (argument === "--format") {
+      options.format = argv[++index];
+      if (!options.format) throw new Error(`${argument} requires final-cut, premiere, or resolve.`);
+    }
     else if (argument === "--project-resolution") {
       options.projectResolution = argv[++index];
       if (!options.projectResolution) throw new Error(`${argument} requires a value.`);
     }
+    else if (argument === "--whisper-model") {
+      options.whisperModel = argv[++index];
+      if (!options.whisperModel) throw new Error(`${argument} requires a path.`);
+    }
+    else if (argument === "--whisper-vad-model") {
+      options.whisperVadModel = argv[++index];
+      if (!options.whisperVadModel) throw new Error(`${argument} requires a path.`);
+    }
+    else if (argument === "--language") {
+      options.language = argv[++index];
+      if (!options.language) throw new Error(`${argument} requires a language code or auto.`);
+    }
+    else if (argument === "--text-confidence") options.textConfidence = readNumber(argv[++index], "--text-confidence");
     else if (argument.startsWith("-")) throw new Error(`Unknown option: ${argument}`);
     else if (!options.input) options.input = argument;
     else throw new Error(`Unexpected argument: ${argument}`);
@@ -58,6 +98,10 @@ export function parseArgs(argv) {
   if (options.keepPause >= options.minimumSilence) {
     throw new Error("--keep-pause must be shorter than --minimum-silence.");
   }
+  if (options.textConfidence < 0 || options.textConfidence > 1) {
+    throw new Error("--text-confidence must be between zero and one.");
+  }
+  timelineExportFor(options.format);
   return options;
 }
 
@@ -76,7 +120,8 @@ async function main() {
   const inputPath = path.resolve(options.input);
   await access(inputPath);
   const parsed = path.parse(inputPath);
-  const outputPath = path.resolve(options.output ?? path.join(parsed.dir, `${parsed.name}.roughcut.fcpxml`));
+  const exportTarget = timelineExportFor(options.format);
+  const outputPath = path.resolve(options.output ?? path.join(parsed.dir, `${parsed.name}.roughcut.${exportTarget.extension}`));
   const outputParsed = path.parse(outputPath);
   const reportBase = outputParsed.name.replace(/\.roughcut$/i, "");
   const reportPath = path.join(outputParsed.dir, `${reportBase}.roughcut.json`);
@@ -87,10 +132,25 @@ async function main() {
   console.log(`Project resolution: ${projectResolution.width}x${projectResolution.height}`);
   console.log("Analysing audio…");
   const silences = await detectSilences(inputPath, options);
-  const segments = buildSegments(silences, media.duration, media.frameRate, options.keepPause);
+  let transcript = null;
+  let textEdits = { candidates: [], applied: [] };
+  if (options.transcribe) {
+    console.log("Transcribing locally with Whisper…");
+    transcript = await transcribeMedia(inputPath, {
+      modelPath: options.whisperModel ?? DEFAULT_WHISPER_MODEL,
+      vadModelPath: options.whisperVadModel ?? DEFAULT_VAD_MODEL,
+      language: options.language,
+    });
+    textEdits = detectTextEdits(transcript.segments, { autoConfidence: options.textConfidence });
+    console.log(`Transcript language: ${transcript.language}; found ${textEdits.candidates.length} text candidate${textEdits.candidates.length === 1 ? "" : "s"}.`);
+  }
+
+  const silenceSegments = buildSegments(silences, media.duration, media.frameRate, options.keepPause);
+  const appliedTextEdits = options.applyTextEdits ? textEdits.applied : [];
+  const segments = addTextCuts(silenceSegments, appliedTextEdits, media.frameRate);
   if (segments.keeps.length === 0) throw new Error("The whole file was detected as silence; no timeline was created.");
 
-  const fcpxml = createFcpxml({
+  const document = createTimelineDocument(options.format, {
     inputPath,
     clipName: parsed.base,
     compoundName: `${parsed.name} — Source`,
@@ -99,7 +159,7 @@ async function main() {
     projectResolution,
     keeps: segments.keeps,
   });
-  await writeFile(outputPath, fcpxml, "utf8");
+  await writeFile(outputPath, document, "utf8");
 
   const removedFrames = segments.removals.reduce((total, item) => total + item.endFrame - item.startFrame, 0);
   const report = {
@@ -113,6 +173,14 @@ async function main() {
         width: projectResolution.width,
         height: projectResolution.height,
       },
+      exportFormat: options.format,
+      transcription: options.transcribe ? {
+        language: options.language,
+        model: path.resolve(options.whisperModel ?? DEFAULT_WHISPER_MODEL),
+        vadModel: path.resolve(options.whisperVadModel ?? DEFAULT_VAD_MODEL),
+        confidenceThreshold: options.textConfidence,
+        applyEdits: options.applyTextEdits,
+      } : null,
     },
     originalDurationSeconds: media.duration,
     roughcutDurationSeconds: seconds(segments.durationFrames - removedFrames, media.frameRate),
@@ -122,12 +190,25 @@ async function main() {
       endSeconds: seconds(item.endFrame, media.frameRate),
       durationSeconds: seconds(item.endFrame - item.startFrame, media.frameRate),
     })),
+    transcript: transcript ? {
+      language: transcript.language,
+      text: transcript.text,
+      segments: transcript.segments,
+    } : null,
+    textEdits: options.transcribe ? {
+      applied: appliedTextEdits,
+      suggestions: textEdits.candidates.filter((item) => !appliedTextEdits.includes(item)),
+    } : null,
   };
   if (options.report) await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
   console.log(`Detected ${silences.length} silence${silences.length === 1 ? "" : "s"}; created ${segments.removals.length} cut${segments.removals.length === 1 ? "" : "s"}.`);
   console.log(`Removed ${report.removedDurationSeconds.toFixed(1)}s from ${report.originalDurationSeconds.toFixed(1)}s.`);
-  console.log(`FCPXML: ${outputPath}`);
+  if (options.transcribe) {
+    console.log(`Applied ${appliedTextEdits.length} high-confidence text edit${appliedTextEdits.length === 1 ? "" : "s"}; review all candidates in the JSON report.`);
+  }
+  console.log(`${exportTarget.shortLabel}: ${outputPath}`);
+  if (options.format === "resolve") console.log(`Resolve: set the imported timeline to ${projectResolution.width}x${projectResolution.height}.`);
   if (options.report) console.log(`Report:  ${reportPath}`);
 }
 

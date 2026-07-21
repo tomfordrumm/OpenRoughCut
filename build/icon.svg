@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="224" fill="#0b0d0d"/>
+  <path d="M238 186h622L770 838H148z" fill="#f15a29"/>
+  <path d="M253 205h582L750 819H176z" fill="none" stroke="#ff835d" stroke-width="12" opacity=".55"/>
+  <text x="504" y="617" fill="#0b0d0d" font-family="Arial, Helvetica, sans-serif" font-size="284" font-weight="700" letter-spacing="-24" text-anchor="middle">RC</text>
+</svg>

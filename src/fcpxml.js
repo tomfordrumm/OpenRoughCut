@@ -83,7 +83,7 @@ export function createFcpxml({ inputPath, clipName, compoundName, projectName, m
       </sequence>
     </media>
   </resources>
-  <event name="Roughcut">
+  <event name="OpenRoughCut">
     <ref-clip name="${xml(resolvedCompoundName)}" ref="r4" start="0s" duration="${frameTime(sourceDurationFrames, frameRate)}"/>
     <project name="${xml(projectName)}">
       <sequence format="r3" duration="${frameTime(timelineDurationFrames, frameRate)}" tcStart="0s" tcFormat="NDF">

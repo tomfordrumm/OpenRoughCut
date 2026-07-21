@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "target": "darwin-x64",
+  "retrievedAt": "2026-07-19",
+  "components": [
+    {
+      "name": "FFmpeg",
+      "distribution": "downloaded-by-user",
+      "version": "8.1.2",
+      "license": "GPL-3.0-or-later",
+      "buildConfiguration": "--enable-gpl --enable-version3 --enable-libx264; static third-party libraries; macOS system frameworks only",
+      "source": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1783018342_8.1.2/ffmpeg.zip",
+      "archiveSha256": "a52ef43883f44c219766d4b3bdde4e635b35465d0b704c01c3a0566b59775df9",
+      "files": {
+        "bin/ffmpeg": "1ca59dda73668c59898a0b305afd8a88817a989187f222ec62d64e775d614d23"
+      }
+    },
+    {
+      "name": "FFprobe",
+      "distribution": "downloaded-by-user",
+      "version": "8.1.2",
+      "license": "GPL-3.0-or-later",
+      "source": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1783018342_8.1.2/ffprobe.zip",
+      "archiveSha256": "5408ca588c8c72b0dde3afe676d0a7acf25ef97e55ae6eba5c7bede1cda42695",
+      "files": {
+        "bin/ffprobe": "bdb6aff0f1f414382effd97040f7862dc85e67996ac296cb4288beed0e06498f"
+      }
+    },
+    {
+      "name": "whisper.cpp",
+      "distribution": "bundled",
+      "version": "1.9.1",
+      "license": "MIT",
+      "source": "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.9.1.tar.gz",
+      "sourceSha256": "147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447",
+      "buildOptions": "Release; x86_64; macOS 12.0; static libraries; GGML_NATIVE=OFF; Metal enabled and embedded",
+      "files": {
+        "bin/whisper-cli": "436960a65e1c76f4c9291da81fc1ed78e93b3c0ba528cae8c527d1d0e0a4545d"
+      }
+    }
+  ]
+}

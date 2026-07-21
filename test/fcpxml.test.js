@@ -43,7 +43,7 @@ test("creates sequential clips referencing exact source ranges", () => {
   assert.match(document, /src="file:\/\/\/tmp\/A%20&amp;%20B\.mov"/);
   assert.match(document, /<media id="r4" name="A &amp; B — Source">[\s\S]*<sequence format="r3" duration="10s"/);
   assert.match(document, /<asset-clip name="A &amp; B\.mov" ref="r2" offset="0s" start="0s" duration="10s" audioRole="dialogue"\/>/);
-  assert.match(document, /<event name="Roughcut">\s*<ref-clip name="A &amp; B — Source" ref="r4" start="0s" duration="10s"\/>/);
+  assert.match(document, /<event name="OpenRoughCut">\s*<ref-clip name="A &amp; B — Source" ref="r4" start="0s" duration="10s"\/>/);
   assert.match(document, /name="A &amp; B — Source" ref="r4" offset="0s" start="0s" duration="2s"/);
   assert.match(document, /name="A &amp; B — Source" ref="r4" offset="2s" start="4s" duration="6s"/);
   assert.match(document, /<sequence format="r3" duration="8s"/);

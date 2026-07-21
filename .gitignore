@@ -1,6 +1,16 @@
 node_modules/
+dist/
+release/
+.release-stage/
+.models/
+.roughcut-tmp/
 *.roughcut.fcpxml
 *.roughcut.json
+*.roughcut-session.json
+vendor/**/bin/*
+!vendor/**/bin/.gitkeep
+vendor/**/prerequisites/*
+!vendor/**/prerequisites/.gitkeep
 *.mov
 *.mp4
 *.m4v
