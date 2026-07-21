@@ -238,19 +238,28 @@ async function filesBelow(directory) {
   return nested.flat();
 }
 
+function utf16Base64(value) {
+  return Buffer.from(value, "utf16le").toString("base64");
+}
+
 export async function extractRuntimeFiles(archivePath, files, destinationDirectory, { platform = process.platform, signal, runCommand = run } = {}) {
   await mkdir(destinationDirectory, { recursive: true });
   const archiveDirectory = path.join(destinationDirectory, "archive");
   await mkdir(archiveDirectory, { recursive: true });
   if (platform === "win32") {
+    const command = [
+      "$ErrorActionPreference = 'Stop'",
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+      `$archivePath = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${utf16Base64(archivePath)}'))`,
+      `$archiveDirectory = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${utf16Base64(archiveDirectory)}'))`,
+      "Expand-Archive -LiteralPath $archivePath -DestinationPath $archiveDirectory -Force",
+    ].join("; ");
     await runCommand("powershell.exe", [
       "-NoLogo",
       "-NoProfile",
       "-NonInteractive",
-      "-Command",
-      "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force",
-      archivePath,
-      archiveDirectory,
+      "-EncodedCommand",
+      utf16Base64(command),
     ], { signal });
   } else {
     await runCommand("/usr/bin/ditto", ["-x", "-k", archivePath, archiveDirectory], { signal });

@@ -4,9 +4,9 @@ import { readFile } from "node:fs/promises";
 
 const packageDocument = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
-test("release identity is OpenRoughCut 0.1.0", () => {
+test("release identity is OpenRoughCut 0.1.1", () => {
   assert.equal(packageDocument.name, "openroughcut");
-  assert.equal(packageDocument.version, "0.1.0");
+  assert.equal(packageDocument.version, "0.1.1");
   assert.equal(packageDocument.bin.openroughcut, "./src/cli.js");
   assert.equal(packageDocument.build.appId, "com.openroughcut.editor");
   assert.equal(packageDocument.build.productName, "OpenRoughCut");
