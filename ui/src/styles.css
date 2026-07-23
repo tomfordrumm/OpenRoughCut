@@ -44,6 +44,8 @@ body {
 .brand strong { font: 700 21px/1 "Avenir Next Condensed", "Helvetica Neue", sans-serif; letter-spacing: .16em; }
 .brand small { color: var(--muted); font-size: 8px; letter-spacing: .18em; }
 .top-actions { display: flex; gap: 8px; }
+.tool-button.new-project { border-color: #75402f; color: #f3a283; background: #211713; }
+.tool-button.new-project:hover:not(:disabled) { border-color: var(--signal); background: #2a1a14; }
 .export-target { height: 34px; display: grid; grid-template-columns: auto auto; align-items: center; border: 1px solid #313532; background: #101312; }
 .export-target span { padding-left: 9px; color: #666c68; font-size: 7px; letter-spacing: .12em; white-space: nowrap; }
 .export-target select { appearance: none; height: 32px; max-width: 142px; border: 0; border-left: 1px solid #292d2b; border-radius: 0; background: #171a19; color: #d4d5ce; padding: 0 24px 0 9px; font-size: 9px; cursor: pointer; background-image: linear-gradient(45deg, transparent 50%, #777 50%), linear-gradient(135deg, #777 50%, transparent 50%); background-position: calc(100% - 12px) 13px, calc(100% - 8px) 13px; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
@@ -63,6 +65,16 @@ body {
 .empty-state h1 em { color: transparent; -webkit-text-stroke: 1px #9c9f99; }
 .empty-state > p:not(.eyebrow) { position: relative; width: min(590px, 55vw); color: #8b908b; font-size: 12px; line-height: 1.75; }
 .hero-button { position: relative; margin-top: 18px; width: 250px; height: 51px; background: var(--signal)!important; border-color: var(--signal)!important; color: #111; font-weight: 700; display: flex; justify-content: space-between; align-items: center; padding: 0 18px; }
+.empty-actions { position: relative; display: flex; align-items: center; gap: 20px; }
+.open-project-link { margin-top: 18px; border: 0; border-bottom: 1px solid #535955; background: transparent; color: #a4a8a3; padding: 6px 1px; cursor: pointer; font-size: 11px; }
+.open-project-link:hover { color: var(--signal); border-color: var(--signal); }
+.open-project-link:disabled { opacity: .45; cursor: default; }
+.empty-open-status { position: relative; width: min(590px, 55vw); margin-top: 22px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid #4a392f; background: #1a1411; padding: 13px 15px; color: #c9a58e; }
+.empty-open-status.error { border-color: #753d34; background: #211412; color: #e28e7b; }
+.empty-open-status > div { min-width: 0; display: grid; gap: 5px; }
+.empty-open-status strong { color: #e8d5c9; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.empty-open-status span { overflow-wrap: anywhere; font-size: 10px; line-height: 1.5; }
+.empty-open-status button { flex: 0 0 auto; border: 1px solid currentColor; background: transparent; color: inherit; padding: 8px 10px; cursor: pointer; font-size: 8px; letter-spacing: .08em; }
 .format-note { position: relative; margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line); width: min(590px, 55vw); font-size: 8px; color: #656a66; letter-spacing: .12em; display: flex; justify-content: space-between; }
 .format-note span { color: var(--signal-soft); }
 
@@ -130,6 +142,11 @@ input[type="range"] { accent-color: var(--signal); height: 3px; cursor: pointer;
   .control-stack { gap: 12px; padding-block: 11px; }
   .source-meta { padding-block: 10px; }.source-meta dl { margin-top: 9px; }
   .legend { display: none; }.timeline-toolbar { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 1450px) {
+  .autosave-state { display: none; }
+  .top-actions { gap: 6px; }
 }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms!important; transition-duration: .01ms!important; } }
@@ -217,6 +234,22 @@ input[type="range"] { accent-color: var(--signal); height: 3px; cursor: pointer;
 .storage-empty strong { font: 600 25px "Avenir Next Condensed", "Helvetica Neue", sans-serif; color: #b5b8b2; }
 .storage-empty span { color: #656a66; }
 .storage-modal > footer { padding: 12px 22px; border-top: 1px solid var(--line); background: #0c0f0e; color: #646965; font-size: 8px; line-height: 1.5; }
+
+/* Safe project switching */
+.project-switch-modal { width: min(600px, 92vw); border: 1px solid #3a403c; background: #111413; box-shadow: 0 30px 100px #000; }
+.project-switch-modal > header { min-height: 92px; display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px; border-bottom: 1px solid var(--line); background: linear-gradient(112deg, #181b1a 0 72%, #241811); }
+.project-switch-modal > header span { color: var(--signal); font-size: 9px; letter-spacing: .16em; }
+.project-switch-modal h2 { margin: 7px 0 0; color: #e5e5dc; font: 600 32px/1 "Avenir Next Condensed", "Helvetica Neue", sans-serif; }
+.project-switch-modal > header > button { width: 34px; height: 34px; border: 1px solid #414642; background: #121514; color: #a7aaa5; font-size: 20px; cursor: pointer; }
+.project-switch-copy { padding: 22px; }
+.project-switch-copy strong { display: block; overflow: hidden; color: #e1e2da; font: 600 18px "Avenir Next Condensed", "Helvetica Neue", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.project-switch-copy p { margin: 13px 0 0; color: #898e89; font-size: 11px; line-height: 1.55; }
+.project-switch-copy p:last-child { color: #c4a06f; }
+.project-switch-modal > footer { display: flex; justify-content: flex-end; gap: 9px; padding: 15px 22px; border-top: 1px solid var(--line); background: #0c0f0e; }
+.project-switch-modal > footer button { min-height: 38px; border: 1px solid #3d423f; background: #171a19; color: #b6bab5; padding: 0 14px; cursor: pointer; font-size: 10px; }
+.project-switch-modal > footer button.danger { border-color: #5b362c; color: #d47c68; }
+.project-switch-modal > footer button.primary { border-color: var(--signal); background: var(--signal); color: #111; font-weight: 700; }
+.project-switch-modal > footer button:disabled { opacity: .4; cursor: default; }
 
 @media (max-width: 780px) {
   .modal-backdrop { padding: 14px; }
@@ -325,6 +358,7 @@ input[type="range"] { min-height: 14px; }
 .setup-card > footer > span { color: #747a75; font-size: 10px; line-height: 1.45; }
 .setup-card > footer button { min-height: 40px; padding: 0 15px; border: 1px solid #454a46; background: #171a19; color: #d2d4cd; cursor: pointer; }
 .setup-card > footer button.primary { border-color: var(--signal); background: var(--signal); color: #111; font-weight: 700; }
+.setup-actions { display: flex; gap: 8px; }
 
 @media (max-width: 1280px) {
   .autosave-state { display: none; }

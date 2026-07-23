@@ -58,6 +58,7 @@ export function createMockBridge(mode) {
     runtimeStatus: async () => mode === "setup" ? setupRuntime : readyRuntime,
     installDependencies: async () => readyRuntime,
     cancelOperation: noOperation,
+    showLogs: async () => ({ path: "/tmp/OpenRoughCut/logs/openroughcut.log" }),
     chooseVideo: async () => recovered,
     preparePreview: async () => ({ previewUrl: null, cached: true }),
     listProxies: async () => ({ cacheLocation: "/Users/demo/Library/Caches/OpenRoughCut", totalSize: 0, proxies: [] }),

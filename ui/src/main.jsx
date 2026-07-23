@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { applyManualOverrides, removalAtFrame } from "../../src/edit-plan.js";
+import { playbackFrameAtTime, seekTimeAfterRemoval } from "../../src/playback.js";
 import { analysisFingerprint, analysisIsCurrent } from "../../src/session.js";
 import "./styles.css";
 
@@ -38,7 +39,31 @@ const formatDuration = (seconds) => Number.isFinite(seconds) ? timecode(seconds)
 function Icon({ children }) { return <span className="icon" aria-hidden="true">{children}</span>; }
 function ToolButton({ children, className = "", ...props }) { return <button className={`tool-button ${className}`} {...props}>{children}</button>; }
 
-function SetupManager({ runtime, blocking = false, installing, operation, error, onInstall, onCancel, onClose }) {
+function ProjectSwitchDialog({ action, currentName, saving, onCancel, onContinue, onSaveAndContinue }) {
+  const openingSavedProject = action === "open";
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape" && !saving) onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [saving, onCancel]);
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onCancel(); }}>
+    <section className="project-switch-modal" role="dialog" aria-modal="true" aria-labelledby="project-switch-title">
+      <header><div><span>SWITCH PROJECT</span><h2 id="project-switch-title">{openingSavedProject ? "Open another project?" : "Start a new project?"}</h2></div><button onClick={onCancel} disabled={saving} aria-label="Close">×</button></header>
+      <div className="project-switch-copy">
+        <strong title={currentName}>{currentName}</strong>
+        <p>{openingSavedProject ? "Opening a saved project will close the video currently on your timeline." : "A new project starts with a different source video and an empty timeline."}</p>
+        <p>Save the current project first if you want to return to these edits later.</p>
+      </div>
+      <footer>
+        <button className="secondary" onClick={onCancel} disabled={saving}>Cancel</button>
+        <button className="secondary danger" onClick={onContinue} disabled={saving}>Continue without saving</button>
+        <button className="primary" onClick={onSaveAndContinue} disabled={saving}>{saving ? "Saving…" : "Save current & continue"}</button>
+      </footer>
+    </section>
+  </div>;
+}
+
+function SetupManager({ runtime, blocking = false, installing, operation, error, onInstall, onCancel, onClose, onShowLogs }) {
   const editingReady = Boolean(runtime?.ffmpeg?.ready && runtime?.ffprobe?.ready);
   const transcriptionReady = Boolean(runtime?.whisper?.ready && runtime?.model?.ready && runtime?.vadModel?.ready);
   const allReady = editingReady && transcriptionReady;
@@ -55,7 +80,7 @@ function SetupManager({ runtime, blocking = false, installing, operation, error,
       {!runtime?.canInstall && !allReady && <div className="setup-warning"><strong>Automatic setup is unavailable on this computer.</strong><span>Reinstall OpenRoughCut from the correct official installer. Your videos and saved sessions will not be removed.</span></div>}
       {error && <div className="setup-error">{error}</div>}
       {installing && <div className="setup-progress" role="status" aria-live="polite"><div><i style={{ width: `${operation?.percent ?? 4}%` }}/></div><span>{operation?.message ?? "Preparing OpenRoughCut…"}</span></div>}
-      <footer><span>{allReady ? "Video editing and private transcription are ready." : runtime?.canInstall ? `${formatBytes(runtime.installBytes)} download · internet connection required` : "This installation needs attention."}</span>{installing ? <button className="secondary" onClick={onCancel}>Cancel</button> : runtime?.canInstall ? <button className="primary" onClick={onInstall}>{error ? "Try setup again" : "Download and prepare OpenRoughCut"}</button> : !blocking && <button className="primary" onClick={onClose}>Done</button>}</footer>
+      <footer><span>{allReady ? "Video editing and private transcription are ready." : runtime?.canInstall ? `${formatBytes(runtime.installBytes)} download · internet connection required` : "This installation needs attention."}</span><div className="setup-actions"><button onClick={onShowLogs}>Logs</button>{installing ? <button className="secondary" onClick={onCancel}>Cancel</button> : runtime?.canInstall ? <button className="primary" onClick={onInstall}>{error ? "Try setup again" : "Download and prepare OpenRoughCut"}</button> : !blocking && <button className="primary" onClick={onClose}>Done</button>}</div></footer>
     </section>
   </div>;
 }
@@ -219,6 +244,7 @@ function App() {
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [openingVideo, setOpeningVideo] = useState(false);
   const [proxyBusy, setProxyBusy] = useState(false);
   const [setupBusy, setSetupBusy] = useState(false);
   const [booting, setBooting] = useState(true);
@@ -229,10 +255,11 @@ function App() {
   const [status, setStatus] = useState({ tone: "idle", text: "Choose a recording to begin" });
   const [operation, setOperation] = useState(null);
   const [storageOpen, setStorageOpen] = useState(false);
+  const [projectSwitchAction, setProjectSwitchAction] = useState(null);
   const [previewError, setPreviewError] = useState(null);
   const [playbackError, setPlaybackError] = useState(null);
   const media = source?.media;
-  const operationBusy = busy || proxyBusy || setupBusy || saving;
+  const operationBusy = busy || proxyBusy || setupBusy || saving || openingVideo;
   const analysisInput = useMemo(() => ({ settings, includeTranscript, textConfidence }), [settings, includeTranscript, textConfidence]);
   const analysisCurrent = analysisIsCurrent(analysisSignature, analysisInput);
   const analysisStale = Boolean(analysisSignature) && !analysisCurrent;
@@ -266,11 +293,11 @@ function App() {
     if (!video || !media || !preview || typeof video.requestVideoFrameCallback !== "function") return undefined;
     let callbackId;
     const followFrame = (_now, metadata) => {
-      const playbackFrame = Math.floor(metadata.mediaTime * media.frameRate.numerator / media.frameRate.denominator);
+      const playbackFrame = playbackFrameAtTime(metadata.mediaTime, media.frameRate);
       const removal = !video.seeking && !roughSeekRef.current ? removalAtFrame(finalPlan.removals, playbackFrame) : null;
       if (removal) {
         roughSeekRef.current = true;
-        const target = framesToSeconds(removal.endFrame, media.frameRate);
+        const target = seekTimeAfterRemoval(removal.endFrame, media.frameRate, media.duration);
         video.currentTime = target;
         setCurrentTime(target);
         video.addEventListener("seeked", () => { roughSeekRef.current = false; }, { once: true });
@@ -328,14 +355,15 @@ function App() {
   }, [undo, redo, togglePlayback, clearSelectedOverride, selectedManual]);
 
   const installSource = useCallback((next, loaded = null) => {
+    videoRef.current?.pause();
     setSource({ ...next, previewUrl: null }); setAnalysis(loaded?.analysis ?? EMPTY_ANALYSIS); setManualOverrides(loaded?.manualOverrides ?? []);
     setSessionPath(loaded?.sessionPath ?? null); setAnalysisSignature(loaded?.analysisSignature ?? null);
-    setPast([]); setFuture([]); setSelection(null); setCurrentTime(0); setPreview(true); setPreviewError(null); setPlaybackError(null); roughSeekRef.current = false;
+    setPast([]); setFuture([]); setSelection(null); setCurrentTime(0); setPreview(true); setPlaying(false); setZoom(2); setPreviewError(null); setPlaybackError(null); roughSeekRef.current = false;
     if (loaded) {
       setSettings(loaded.settings); setProjectResolution(loaded.projectResolution ?? "source"); setExportFormat(loaded.exportFormat ?? "final-cut");
       setIncludeTranscript(loaded.includeTranscript === true); setTextConfidence(loaded.textConfidence ?? 0.9);
     } else {
-      setSettings(DEFAULT_SETTINGS); setIncludeTranscript(false); setTextConfidence(0.9);
+      setSettings(DEFAULT_SETTINGS); setProjectResolution("source"); setExportFormat("final-cut"); setIncludeTranscript(false); setTextConfidence(0.9);
     }
     buildPreview(next);
   }, [buildPreview]);
@@ -398,9 +426,20 @@ function App() {
     }
   }), [sessionPayload]);
   const chooseVideo = async () => {
-    if (operationBusy) return;
-    try { const next = await window.roughcut.chooseVideo(); if (next) { installSource(next); setStatus({ tone: "working", text: "Source loaded · preparing preview" }); } }
-    catch (error) { setStatus({ tone: "error", text: error.message }); }
+    if (operationBusy) return false;
+    setOpeningVideo(true);
+    setStatus({ tone: "working", text: "Choose a video to inspect…" });
+    try {
+      const next = await window.roughcut.chooseVideo();
+      if (!next) { setStatus({ tone: "idle", text: "Choose a recording to begin" }); return false; }
+      installSource(next); setStatus({ tone: "working", text: "New project created · preparing preview" });
+      return true;
+    } catch (error) { setStatus({ tone: "error", text: error.message }); return false; }
+    finally { setOpeningVideo(false); }
+  };
+  const showLogs = async () => {
+    try { await window.roughcut.showLogs(); }
+    catch (error) { setStatus({ tone: "error", text: `Could not open diagnostic logs · ${error.message}` }); }
   };
   const analyze = async () => {
     if (!source || operationBusy) return;
@@ -414,17 +453,52 @@ function App() {
     finally { setBusy(false); }
   };
   const saveSession = async () => {
-    if (!sessionPayload || saving) return;
+    if (!sessionPayload || saving) return false;
     setSaving(true);
-    try { const saved = await window.roughcut.saveSession(sessionPayload); if (saved) { setSessionPath(saved.path); setStatus({ tone: "success", text: `Saved · ${saved.path.split(/[\\/]/).at(-1)}` }); } }
-    catch (error) { setStatus({ tone: "error", text: error.message }); }
+    try {
+      const saved = await window.roughcut.saveSession(sessionPayload);
+      if (!saved) return false;
+      setSessionPath(saved.path); setStatus({ tone: "success", text: `Saved · ${saved.path.split(/[\\/]/).at(-1)}` });
+      return true;
+    }
+    catch (error) { setStatus({ tone: "error", text: error.message }); return false; }
     finally { setSaving(false); }
   };
   const loadSession = async () => {
-    if (operationBusy) return;
-    try { const loaded = await window.roughcut.loadSession(); if (loaded) { installSource(loaded, loaded); setStatus({ tone: "working", text: "Session loaded · preparing preview" }); } }
-    catch (error) { setStatus({ tone: "error", text: error.message }); }
+    if (operationBusy) return false;
+    try {
+      const loaded = await window.roughcut.loadSession();
+      if (!loaded) return false;
+      installSource(loaded, loaded); setStatus({ tone: "working", text: "Project opened · preparing preview" });
+      return true;
+    }
+    catch (error) { setStatus({ tone: "error", text: error.message }); return false; }
   };
+  const performProjectSwitch = async (action) => action === "open" ? loadSession() : chooseVideo();
+  const requestProjectSwitch = (action) => {
+    if (operationBusy) return;
+    if (source) setProjectSwitchAction(action);
+    else performProjectSwitch(action);
+  };
+  const continueProjectSwitch = async ({ saveFirst = false } = {}) => {
+    const action = projectSwitchAction;
+    if (!action) return;
+    if (saveFirst && !await saveSession()) return;
+    setProjectSwitchAction(null);
+    await performProjectSwitch(action);
+  };
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "n") { event.preventDefault(); requestProjectSwitch("new"); }
+      else if (key === "o") { event.preventDefault(); requestProjectSwitch("open"); }
+      else if (key === "s" && source) { event.preventDefault(); saveSession(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
   const exportProject = async () => {
     if (!source || operationBusy || !analysisCurrent) return;
     setBusy(true);
@@ -476,18 +550,20 @@ function App() {
       <div className="brand"><span className="brand-mark">RC</span><div><strong>ROUGH/CUT</strong><small>Smart silence editor</small></div></div>
       {runtime?.coreReady && <div className="top-actions">
         <span className={`autosave-state ${autosaveState.tone}`} title={autosaveState.text}>{autosaveState.text || "Recovery turns on after opening a source"}</span>
+        <ToolButton className="new-project" onClick={() => requestProjectSwitch("new")} disabled={operationBusy} title="New project (⌘N)"><Icon>＋</Icon> New project</ToolButton>
+        <ToolButton onClick={() => requestProjectSwitch("open")} disabled={operationBusy} title="Open project (⌘O)"><Icon>↥</Icon> Open project</ToolButton>
+        <ToolButton onClick={saveSession} disabled={!source || operationBusy} title="Save project (⌘S)"><Icon>⌘</Icon> {saving ? "Saving…" : "Save project"}</ToolButton>
         <ToolButton onClick={() => setSetupOpen(true)} disabled={setupBusy}><Icon>{runtime?.transcriptionReady ? "✓" : "!"}</Icon> Setup</ToolButton>
+        <ToolButton onClick={showLogs} title="Show diagnostic log"><Icon>≡</Icon> Logs</ToolButton>
         <ToolButton onClick={() => setStorageOpen(true)} disabled={operationBusy}><Icon>▤</Icon> Storage</ToolButton>
-        <ToolButton onClick={loadSession} disabled={operationBusy}><Icon>↥</Icon> Open</ToolButton>
-        <ToolButton onClick={saveSession} disabled={!source || operationBusy}><Icon>⌘</Icon> {saving ? "Saving…" : "Save"}</ToolButton>
         <label className="export-target"><span>EXPORT</span><select aria-label="Timeline export format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value)} disabled={operationBusy}>{EXPORT_FORMATS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
         <ToolButton className="primary" onClick={exportProject} disabled={!source || operationBusy || !analysisCurrent} title={analysisStale ? "Settings changed. Re-analyse before exporting." : !analysisSignature ? "Analyse the source before exporting." : undefined}><Icon>↗</Icon> Export {selectedExport.button}</ToolButton>
       </div>}
     </header>
-    {!runtime?.coreReady ? <SetupManager runtime={runtime} blocking installing={setupBusy} operation={operation} error={setupError} onInstall={prepareOpenRoughCut} onCancel={cancelOperation} onClose={() => {}}/> : !source ? <section className="empty-state"><p className="eyebrow">EDIT FASTER, STAY IN CONTROL</p><h1>Remove silence.<br/><em>Keep every decision editable.</em></h1><p>Open one recording, review the suggested cuts, and export an editable timeline to your video editor.</p><ToolButton className="hero-button" onClick={chooseVideo}>Open video <Icon>→</Icon></ToolButton><div className="format-note">MOV · MP4 · M4V · MKV · WEBM <span>Final Cut Pro · Premiere Pro · Resolve</span></div></section> :
+    {!runtime?.coreReady ? <SetupManager runtime={runtime} blocking installing={setupBusy} operation={operation} error={setupError} onInstall={prepareOpenRoughCut} onCancel={cancelOperation} onClose={() => {}} onShowLogs={showLogs}/> : !source ? <section className="empty-state"><p className="eyebrow">EDIT FASTER, STAY IN CONTROL</p><h1>Remove silence.<br/><em>Keep every decision editable.</em></h1><p>Create a project from one recording, review the suggested cuts, and export an editable timeline to your video editor.</p><div className="empty-actions"><ToolButton className="hero-button" onClick={() => requestProjectSwitch("new")} disabled={openingVideo}>{openingVideo ? "Inspecting selected video…" : "Create project from video"} <Icon>{openingVideo ? "…" : "→"}</Icon></ToolButton><button className="open-project-link" onClick={() => requestProjectSwitch("open")} disabled={openingVideo}>Open a saved project</button></div>{(openingVideo || status.tone === "error") && <div className={`empty-open-status ${status.tone}`} role="status" aria-live="polite"><div><strong>{openingVideo ? "Inspecting video" : "Could not open video"}</strong><span>{status.text}</span></div>{status.tone === "error" && <button onClick={showLogs}>SHOW DIAGNOSTIC LOG</button>}</div>}<div className="format-note">MOV · MP4 · M4V · MKV · WEBM <span>Final Cut Pro · Premiere Pro · Resolve</span></div></section> :
       <div className="workspace">
-        <section className="viewer-panel panel"><div className="panel-heading"><span>Preview</span><button onClick={chooseVideo} disabled={operationBusy}>Replace video</button></div><div className="viewer">
-          {source.previewUrl && <video ref={videoRef} key={source.previewUrl} src={source.previewUrl} onTimeUpdate={onTimeUpdate} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedData={() => setPlaybackError(null)} onError={onVideoError} playsInline />}
+        <section className="viewer-panel panel"><div className="panel-heading"><span>Preview</span><button onClick={() => requestProjectSwitch("new")} disabled={operationBusy}>Start new project</button></div><div className="viewer">
+          {source.previewUrl && <video ref={videoRef} key={source.previewUrl} src={source.previewUrl} preload="auto" onTimeUpdate={onTimeUpdate} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedData={() => setPlaybackError(null)} onError={onVideoError} playsInline />}
           {proxyBusy && <div className="process-overlay"><span className="spinner large"/><strong>Preparing smooth playback</strong><span>{operation?.message}</span><div className="progress-track"><i style={{ width: `${operation?.percent ?? 8}%` }}/></div><output>{operation?.percent == null ? "Working…" : `${operation.percent}%`}</output><button onClick={cancelOperation}>Cancel</button></div>}
           {!source.previewUrl && !proxyBusy && !previewError && <div className="media-error"><strong>Preview proxy not available</strong><span>The original video and all edit decisions are still intact.</span><button onClick={() => buildPreview(source)}>REBUILD PREVIEW</button></div>}
           {previewError && !proxyBusy && <div className="media-error"><strong>Preview generation failed</strong><span>{previewError}</span><button onClick={() => buildPreview(source)}>TRY AGAIN</button></div>}
@@ -511,7 +587,8 @@ function App() {
         </section>
       </div>}
     {storageOpen && <StorageManager sourceId={source?.sourceId} onClose={() => setStorageOpen(false)} onDeleted={onProxiesDeleted}/>} 
-    {setupOpen && runtime?.coreReady && <SetupManager runtime={runtime} installing={setupBusy} operation={operation} error={setupError} onInstall={prepareOpenRoughCut} onCancel={cancelOperation} onClose={() => setSetupOpen(false)}/>} 
+    {setupOpen && runtime?.coreReady && <SetupManager runtime={runtime} installing={setupBusy} operation={operation} error={setupError} onInstall={prepareOpenRoughCut} onCancel={cancelOperation} onClose={() => setSetupOpen(false)} onShowLogs={showLogs}/>}
+    {projectSwitchAction && <ProjectSwitchDialog action={projectSwitchAction} currentName={source?.name} saving={saving} onCancel={() => setProjectSwitchAction(null)} onContinue={() => continueProjectSwitch()} onSaveAndContinue={() => continueProjectSwitch({ saveFirst: true })}/>}
   </main>;
 }
 

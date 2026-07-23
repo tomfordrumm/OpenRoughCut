@@ -1,11 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from "electron";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { createAppLogger } from "../src/app-logger.js";
 import { applyManualOverrides } from "../src/edit-plan.js";
 import { detectSilences, probeMedia } from "../src/media.js";
 import { createMediaResponse } from "../src/media-stream.js";
+import { previewKeyframeOptions } from "../src/playback.js";
 import { run } from "../src/process.js";
 import { resolveProjectResolution } from "../src/resolution.js";
 import { addTextCuts, buildSegments, secondsToFrames } from "../src/segments.js";
@@ -23,9 +25,16 @@ const PROJECT_RESOLUTIONS = new Set(["source", "4k", "full-hd"]);
 const PROXY_ID = /^[a-f0-9]{24}$/;
 const PARTIAL_PROXY = /\.partial\.mp4$/;
 const PARTIAL_PROXY_MAX_AGE = 24 * 60 * 60 * 1_000;
+const VIDEO_PROBE_TIMEOUT_MS = 60_000;
 let activeOperation = null;
 let runtimeStatus = null;
 let recoveryWrite = Promise.resolve();
+let appLogger = {
+  filePath: null,
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
 const flushApproved = new WeakSet();
 const flushTimers = new WeakMap();
 
@@ -42,6 +51,7 @@ async function runOperation(event, operation, task) {
   try {
     return await task(controller.signal);
   } catch (error) {
+    appLogger.error("operation.failed", error, { operation });
     if (error.name === "AbortError") sendProgress(event.sender, operation, "cancelled", "Operation cancelled");
     throw error;
   } finally {
@@ -101,16 +111,44 @@ function writeRecovery(document) {
 }
 
 async function refreshRuntimeStatus() {
-  runtimeStatus = await inspectRuntimeDependencies({
-    resourcesPath: process.resourcesPath,
-    userDataPath: app.getPath("userData"),
-    developmentRoot: app.isPackaged ? null : path.resolve(import.meta.dirname, ".."),
-  });
-  return runtimeStatus;
+  try {
+    runtimeStatus = await inspectRuntimeDependencies({
+      resourcesPath: process.resourcesPath,
+      userDataPath: app.getPath("userData"),
+      developmentRoot: app.isPackaged ? null : path.resolve(import.meta.dirname, ".."),
+    });
+    appLogger.info("runtime.checked", {
+      platform: runtimeStatus.platform,
+      arch: runtimeStatus.arch,
+      coreReady: runtimeStatus.coreReady,
+      transcriptionReady: runtimeStatus.transcriptionReady,
+      ffmpegSource: runtimeStatus.ffmpeg.source,
+      ffprobeSource: runtimeStatus.ffprobe.source,
+      ffprobeCommand: runtimeStatus.ffprobe.command,
+      whisperSource: runtimeStatus.whisper.source,
+    });
+    return runtimeStatus;
+  } catch (error) {
+    appLogger.error("runtime.check.failed", error);
+    throw error;
+  }
 }
 
 async function currentRuntimeStatus() {
   return runtimeStatus ?? refreshRuntimeStatus();
+}
+
+async function probeSelectedVideo(sourcePath, ffprobeCommand) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), VIDEO_PROBE_TIMEOUT_MS);
+  try {
+    return await probeMedia(sourcePath, { signal: controller.signal, ffprobeCommand });
+  } catch (error) {
+    if (!controller.signal.aborted) throw error;
+    throw new Error("Video inspection took more than one minute. Copy the file to a local folder and try again.", { cause: error });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function resultForSource(sourcePath, media, { sessionPath = null } = {}) {
@@ -134,7 +172,7 @@ function proxyCacheDirectory() {
 function proxyMetadata(source, signature) {
   const dimensions = proxyDimensions(source.media.width, source.media.height);
   return {
-    version: 2,
+    version: 3,
     id: signature,
     sourceName: path.basename(source.sourcePath),
     width: dimensions.width,
@@ -150,13 +188,6 @@ function proxyDimensions(width, height) {
     width: Math.max(2, Math.round(width * scale / 2) * 2),
     height: Math.max(2, Math.round(height * scale / 2) * 2),
   };
-}
-
-function canUseSourceForPreview(source) {
-  const extension = path.extname(source.sourcePath).toLowerCase();
-  return [".mp4", ".m4v"].includes(extension)
-    && source.media.videoCodec === "h264"
-    && source.media.audioCodec === "aac";
 }
 
 async function cleanupPartialProxies(cacheDirectory) {
@@ -195,7 +226,7 @@ async function listProxyCache(activeSourceId) {
       let metadata = null;
       try {
         const parsed = JSON.parse(await readFile(path.join(cacheDirectory, `${id}.json`), "utf8"));
-        if ([1, 2].includes(parsed?.version) && parsed.id === id) metadata = parsed;
+        if ([1, 2, 3].includes(parsed?.version) && parsed.id === id) metadata = parsed;
       } catch {}
       return {
         id,
@@ -347,12 +378,8 @@ function sanitizedAnalysis(value, media) {
 }
 
 async function preparePreview(source, sender, { signal, ffmpegCommand = "ffmpeg" } = {}) {
-  if (canUseSourceForPreview(source)) {
-    sendProgress(sender, "preview", "done", "Source is ready for playback", 100);
-    return { previewUrl: `roughcut-media://source/${source.mediaToken}`, cached: true, direct: true };
-  }
   const info = await stat(source.sourcePath);
-  const signature = createHash("sha256").update(`roughcut-preview-v2\0${source.sourcePath}\0${info.size}\0${info.mtimeMs}`).digest("hex").slice(0, 24);
+  const signature = createHash("sha256").update(`roughcut-preview-v3\0${source.sourcePath}\0${info.size}\0${info.mtimeMs}`).digest("hex").slice(0, 24);
   const cacheDirectory = proxyCacheDirectory();
   const outputPath = path.join(cacheDirectory, `${signature}.mp4`);
   const temporaryPath = path.join(cacheDirectory, `${signature}.${randomUUID()}.partial.mp4`);
@@ -378,6 +405,7 @@ async function preparePreview(source, sender, { signal, ffmpegCommand = "ffmpeg"
   const common = [
     "-y", "-hide_banner", "-loglevel", "error", "-i", source.sourcePath,
     "-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
+    ...previewKeyframeOptions(source.media.frameRate),
     "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-progress", "pipe:2", "-nostats",
   ];
   sendProgress(sender, "preview", "running", "Building Chromium playback proxy…", 0);
@@ -512,18 +540,44 @@ function registerIpc() {
 
   ipcMain.handle("operation:cancel", (event) => cancelOperation(event));
 
+  ipcMain.handle("diagnostics:show-logs", async () => {
+    if (!appLogger.filePath) throw new Error("The diagnostic log is not available yet.");
+    appLogger.info("diagnostics.log.revealed");
+    shell.showItemInFolder(appLogger.filePath);
+    return { path: appLogger.filePath };
+  });
+
   ipcMain.handle("video:choose", async () => {
-    const selected = await dialog.showOpenDialog({
-      title: "Choose source recording",
-      properties: ["openFile"],
-      filters: [{ name: "Video", extensions: ["mov", "mp4", "m4v", "mkv", "webm"] }],
-    });
-    if (selected.canceled || !selected.filePaths[0]) return null;
-    const runtime = await currentRuntimeStatus();
-    if (!runtime.ffprobe.ready) throw new Error("FFprobe is not available. Complete setup before opening a video.");
-    const sourcePath = selected.filePaths[0];
-    const media = await probeMedia(sourcePath, { ffprobeCommand: runtime.ffprobe.command });
-    return resultForSource(sourcePath, media);
+    let sourcePath = null;
+    try {
+      const selected = await dialog.showOpenDialog({
+        title: "Choose video for new project",
+        properties: ["openFile"],
+        filters: [{ name: "Video", extensions: ["mov", "mp4", "m4v", "mkv", "webm"] }],
+      });
+      if (selected.canceled || !selected.filePaths[0]) {
+        appLogger.info("video.open.cancelled");
+        return null;
+      }
+      sourcePath = selected.filePaths[0];
+      appLogger.info("video.open.selected", { sourcePath });
+      const runtime = await currentRuntimeStatus();
+      if (!runtime.ffprobe.ready) throw new Error("FFprobe is not available. Complete setup before opening a video.");
+      const media = await probeSelectedVideo(sourcePath, runtime.ffprobe.command);
+      appLogger.info("video.open.succeeded", {
+        sourcePath,
+        duration: media.duration,
+        width: media.width,
+        height: media.height,
+        videoCodec: media.videoCodec,
+        audioCodec: media.audioCodec,
+        frameRate: media.frameRate,
+      });
+      return resultForSource(sourcePath, media);
+    } catch (error) {
+      appLogger.error("video.open.failed", error, { sourcePath });
+      throw error;
+    }
   });
 
   ipcMain.handle("video:prepare-preview", async (event, request) => {
@@ -581,7 +635,7 @@ function registerIpc() {
     let filePath = source.sessionPath;
     if (!filePath) {
       const defaultPath = path.join(path.dirname(source.sourcePath), `${path.parse(source.sourcePath).name}.roughcut`);
-      const selected = await dialog.showSaveDialog({ title: "Save OpenRoughCut session", defaultPath, filters: [{ name: "OpenRoughCut Session", extensions: ["roughcut"] }] });
+      const selected = await dialog.showSaveDialog({ title: "Save OpenRoughCut project", defaultPath, filters: [{ name: "OpenRoughCut Project", extensions: ["roughcut"] }] });
       if (selected.canceled || !selected.filePath) return null;
       filePath = selected.filePath;
     }
@@ -609,7 +663,7 @@ function registerIpc() {
   });
 
   ipcMain.handle("session:load", async () => {
-    const selected = await dialog.showOpenDialog({ title: "Open OpenRoughCut session", properties: ["openFile"], filters: [{ name: "OpenRoughCut Session", extensions: ["roughcut", "json"] }] });
+    const selected = await dialog.showOpenDialog({ title: "Open OpenRoughCut project", properties: ["openFile"], filters: [{ name: "OpenRoughCut Project", extensions: ["roughcut", "json"] }] });
     if (selected.canceled || !selected.filePaths[0]) return null;
     return loadSessionFile(selected.filePaths[0]);
   });
@@ -681,6 +735,8 @@ async function createWindow() {
     },
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("preload-error", (_event, preloadPath, error) => appLogger.error("renderer.preload.failed", error, { preloadPath }));
+  window.webContents.on("render-process-gone", (_event, details) => appLogger.error("renderer.process.gone", new Error(details.reason), details));
   window.webContents.on("will-navigate", (event, url) => {
     if (url !== entryUrl) event.preventDefault();
   });
@@ -699,6 +755,8 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  appLogger = createAppLogger({ directory: path.join(app.getPath("userData"), "logs") });
+  appLogger.info("app.started", { version: app.getVersion(), platform: process.platform, arch: process.arch, packaged: app.isPackaged });
   protocol.handle("roughcut-media", (request) => {
     const token = new URL(request.url).pathname.slice(1);
     const sourcePath = mediaTokens.get(token);
@@ -713,3 +771,6 @@ app.whenReady().then(async () => {
 
 app.on("before-quit", () => activeOperation?.controller.abort());
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+
+process.on("uncaughtExceptionMonitor", (error, origin) => appLogger.error("process.uncaught-exception", error, { origin }));
+process.on("unhandledRejection", (reason) => appLogger.error("process.unhandled-rejection", reason));

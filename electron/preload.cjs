@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("roughcut", {
   runtimeStatus: () => ipcRenderer.invoke("runtime:status"),
   installDependencies: () => ipcRenderer.invoke("runtime:install"),
   cancelOperation: () => ipcRenderer.invoke("operation:cancel"),
+  showLogs: () => ipcRenderer.invoke("diagnostics:show-logs"),
   chooseVideo: () => ipcRenderer.invoke("video:choose"),
   preparePreview: (request) => ipcRenderer.invoke("video:prepare-preview", request),
   listProxies: (request) => ipcRenderer.invoke("storage:list-proxies", request),

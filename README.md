@@ -96,11 +96,13 @@ npm run app:build
 npm run app:preview
 ```
 
-Browser-compatible H.264/AAC MP4 sources play directly. Other sources use a bounded 720p H.264/AAC proxy for predictable Chromium playback. Proxies are stored in the operating-system cache and reused while the source path, size, and modification time remain unchanged. Every timeline export still references the untouched original recording.
+Sources use a bounded 720p H.264/AAC proxy with frequent keyframes for predictable Chromium playback and fast jumps across large cuts. Proxies are stored in the operating-system cache and reused while the source path, size, and modification time remain unchanged. Every timeline export still references the untouched original recording.
 
 Public macOS and Windows packages use `electron-builder` and bundle the private whisper.cpp runtime. On first launch, one setup approval downloads and verifies the editing engine and on-device speech models; users do not need Terminal or a package manager. FFmpeg and FFprobe are deliberately excluded from the app installer. See [docs/RELEASING.md](docs/RELEASING.md) for runtime layout, signing, licensing, and installer commands.
 
 Use **Storage** in the top toolbar to inspect that cache. The storage manager shows every proxy, its source name when known, modification date, size, and whether it belongs to the currently open source. Proxies can be deleted individually or all at once. Deleting the current proxy only disables playback until **Rebuild preview** is clicked; analysis, manual decisions, sessions, originals, and exported timelines are never removed.
+
+Use **Logs** in the toolbar or setup screen to reveal `logs/openroughcut.log` in the operating system's file manager. The app records startup/runtime checks, selected-media inspection results, operation failures, and renderer crashes. The structured log rotates at 2 MB and retains one previous file. It includes selected file paths and system/runtime details, but never video or audio content; review it before sharing if paths are sensitive.
 
 ## Experimental transcription edits
 
