@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const packageDocument = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+const installerScript = await readFile(new URL("../build/installer.nsh", import.meta.url), "utf8");
+const releaseStagingScript = await readFile(new URL("../scripts/stage-release.mjs", import.meta.url), "utf8");
 
 test("release identity is OpenRoughCut 0.1.2", () => {
   assert.equal(packageDocument.name, "openroughcut");
@@ -28,4 +30,11 @@ test("Windows uses a one-click per-user installer", () => {
   assert.equal(packageDocument.build.nsis.perMachine, false);
   assert.equal(packageDocument.build.nsis.allowToChangeInstallationDirectory, false);
   assert.equal(packageDocument.build.nsis.runAfterFinish, true);
+});
+
+test("Windows stages its installer prerequisite without parent-directory traversal", () => {
+  assert.match(packageDocument.scripts["dist:win"], /stage-release\.mjs win32/);
+  assert.match(releaseStagingScript, /installer-prerequisites/);
+  assert.match(installerScript, /\$\{PROJECT_DIR\}\/installer-prerequisites\/vc_redist\.x64\.exe/);
+  assert.doesNotMatch(installerScript, /PROJECT_DIR[^\r\n]*\.\.\/vendor/);
 });
