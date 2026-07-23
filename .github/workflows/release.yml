@@ -82,9 +82,18 @@ jobs:
           npm run dist:win 2>&1 | Tee-Object -FilePath $logPath
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
-            $tail = (Get-Content $logPath -Tail 40) -join "`n"
-            $annotation = $tail.Replace("%", "%25").Replace("`r", "%0D").Replace("`n", "%0A")
-            Write-Output "::error title=Windows packaging failed::$annotation"
+            $lines = Get-Content $logPath |
+              ForEach-Object { ($_ -replace "`e\[[0-9;?]*[ -/]*[@-~]", "").Trim() } |
+              Where-Object { $_ }
+            $diagnostics = @(
+              $lines | Where-Object { $_ -match "(?i)(error|failed|failure|fatal|cannot|exception|enoent|exit code|⨯)" } | Select-Object -Last 12
+              $lines | Select-Object -Last 12
+            ) | Select-Object -Unique
+            foreach ($line in $diagnostics) {
+              $message = if ($line.Length -gt 3500) { $line.Substring(0, 3500) } else { $line }
+              $annotation = $message.Replace("%", "%25").Replace("`r", "%0D").Replace("`n", "%0A")
+              Write-Output "::error title=Windows packaging diagnostic::$annotation"
+            }
             exit $exitCode
           }
       - name: Upload Windows build log
