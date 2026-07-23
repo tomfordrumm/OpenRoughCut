@@ -75,7 +75,26 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/prepare-release-runtime.mjs win32 x64
-      - run: npm run dist:win
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $logPath = Join-Path $env:RUNNER_TEMP "windows-build.log"
+          npm run dist:win 2>&1 | Tee-Object -FilePath $logPath
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            $tail = (Get-Content $logPath -Tail 40) -join "`n"
+            $annotation = $tail.Replace("%", "%25").Replace("`r", "%0D").Replace("`n", "%0A")
+            Write-Output "::error title=Windows packaging failed::$annotation"
+            exit $exitCode
+          }
+      - name: Upload Windows build log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-build-log
+          path: ${{ runner.temp }}/windows-build.log
+          if-no-files-found: warn
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-windows-x64
