@@ -33,6 +33,12 @@ npm run dist:win
 
 `dist:mac` creates DMG and ZIP artifacts. `dist:win` creates a one-click, per-user NSIS installer. When the Microsoft Visual C++ runtime is missing, the installer explains why it is needed and asks before launching the pinned Microsoft prerequisite. Each command verifies only the components actually conveyed by that installer; FFmpeg/FFprobe are obtained during first-run setup.
 
+## Automated releases
+
+Push a version commit to `main`, then push the matching annotated tag (for example, `v0.1.2`). `.github/workflows/release.yml` validates that the tag matches `package.json`, runs the application and website tests, reconstructs the ignored native runtime from pinned checksum-verified sources, and builds each installer on its native operating system. After every target succeeds, the workflow publishes the tag as a GitHub Release with all five platform artifacts and `SHA256SUMS.txt`.
+
+The Apple Silicon and Intel `whisper-cli` binaries are recovered from the checksum-pinned 0.1.1 release packages because whisper.cpp does not publish standalone macOS CLI archives. The Windows runtime and Visual C++ prerequisite are fetched from their pinned upstream URLs. `scripts/prepare-release-runtime.mjs` verifies the archive and every extracted binary before packaging.
+
 Build and sign macOS artifacts on macOS, including separate arm64 and x64 releases or a deliberately assembled universal runtime. Build and sign the Windows installer on Windows. Configure Apple notarization and Windows code-signing identities in the release environment; do not publish unsigned installers as production downloads.
 
 ## Pre-publish checklist

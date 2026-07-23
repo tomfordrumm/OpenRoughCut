@@ -25,4 +25,4 @@ This creates the production build and verifies the server-rendered page, core co
 
 The public site is deployed at [orc.yhub.net](https://orc.yhub.net). Run `npm run deploy:yhub` to build and publish an update using the ignored local `.env` credentials. The site itself does not require a database, object storage, or visitor authentication.
 
-Release downloads are served directly from the [OpenRoughCut v0.1.1 GitHub release](https://github.com/tomfordrumm/OpenRoughCut/releases/tag/v0.1.1).
+Release downloads are served directly from the [OpenRoughCut v0.1.2 GitHub release](https://github.com/tomfordrumm/OpenRoughCut/releases/tag/v0.1.2).

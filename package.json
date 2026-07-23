@@ -1,6 +1,6 @@
 {
   "name": "openroughcut",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "author": "OpenRoughCut",
@@ -35,6 +35,9 @@
   },
   "engines": {
     "node": ">=20.19"
+  },
+  "overrides": {
+    "shell-quote": "1.10.0"
   },
   "build": {
     "appId": "com.openroughcut.editor",

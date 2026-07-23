@@ -25,10 +25,10 @@ test("server-renders the OpenRoughCut landing page", async () => {
   assert.match(html, /Open code\./);
   assert.match(html, /Contributions/);
   assert.match(html, /github\.com\/tomfordrumm\/OpenRoughCut\/issues\/new/);
-  assert.match(html, /OpenRoughCut-0\.1\.1-mac-arm64\.dmg/);
-  assert.match(html, /OpenRoughCut-0\.1\.1-mac-x64\.dmg/);
-  assert.match(html, /OpenRoughCut-0\.1\.1-win-x64\.exe/);
-  assert.match(html, /releases\/download\/v0\.1\.1\/SHA256SUMS\.txt/);
-  assert.doesNotMatch(html, /releases\/(?:tag|download)\/v0\.1\.0/);
+  assert.match(html, /OpenRoughCut-0\.1\.2-mac-arm64\.dmg/);
+  assert.match(html, /OpenRoughCut-0\.1\.2-mac-x64\.dmg/);
+  assert.match(html, /OpenRoughCut-0\.1\.2-win-x64\.exe/);
+  assert.match(html, /releases\/download\/v0\.1\.2\/SHA256SUMS\.txt/);
+  assert.doesNotMatch(html, /releases\/(?:tag|download)\/v0\.1\.[01]/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|SkeletonPreview/);
 });

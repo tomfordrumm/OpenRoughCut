@@ -1,5 +1,5 @@
 const githubUrl = "https://github.com/tomfordrumm/OpenRoughCut";
-const releaseVersion = "0.1.1";
+const releaseVersion = "0.1.2";
 const releaseUrl = `${githubUrl}/releases/tag/v${releaseVersion}`;
 const assetUrl = `${githubUrl}/releases/download/v${releaseVersion}`;
 
