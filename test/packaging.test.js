@@ -35,6 +35,6 @@ test("Windows uses a one-click per-user installer", () => {
 test("Windows stages its installer prerequisite without parent-directory traversal", () => {
   assert.match(packageDocument.scripts["dist:win"], /stage-release\.mjs win32/);
   assert.match(releaseStagingScript, /installer-prerequisites/);
-  assert.match(installerScript, /\$\{PROJECT_DIR\}\/installer-prerequisites\/vc_redist\.x64\.exe/);
+  assert.match(installerScript, /\$\{PROJECT_DIR\}\\installer-prerequisites\\vc_redist\.x64\.exe/);
   assert.doesNotMatch(installerScript, /PROJECT_DIR[^\r\n]*\.\.\/vendor/);
 });

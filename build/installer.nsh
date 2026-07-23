@@ -8,7 +8,7 @@
     MessageBox MB_ICONINFORMATION|MB_OKCANCEL "OpenRoughCut needs the Microsoft Visual C++ runtime for private, on-device transcription. Windows may ask for permission to install this Microsoft component." IDOK +2
     Abort
     DetailPrint "Installing the Microsoft Visual C++ runtime required by transcription..."
-    File /oname=$PLUGINSDIR\vc_redist.x64.exe "${PROJECT_DIR}/installer-prerequisites/vc_redist.x64.exe"
+    File /oname=$PLUGINSDIR\vc_redist.x64.exe "${PROJECT_DIR}\installer-prerequisites\vc_redist.x64.exe"
     ExecWait '"$PLUGINSDIR\vc_redist.x64.exe" /install /quiet /norestart' $0
 
     ${If} $0 != 0
