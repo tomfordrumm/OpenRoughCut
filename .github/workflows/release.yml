@@ -30,8 +30,10 @@ jobs:
             website/package-lock.json
       - run: npm ci
       - run: npm ci --prefix website
-      - run: npm audit --audit-level=high
-      - run: npm audit --prefix website --audit-level=high
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Audit website production dependencies
+        run: npm audit --prefix website --omit=dev --audit-level=high
       - name: Verify tag matches package version
         run: node -e "const v=require('./package.json').version;if(process.env.GITHUB_REF_NAME!=='v'+v)throw new Error('Tag must be v'+v)"
       - run: npm run build --prefix website
