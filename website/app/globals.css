@@ -16,7 +16,8 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+/* Keep hash navigation interruptible in Chrome after jumping to a section. */
+html { scroll-behavior: auto; }
 
 body {
   margin: 0;
@@ -267,6 +268,5 @@ footer p { color: #989a91; font-size: 11px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

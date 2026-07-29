@@ -1,6 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseMediaTimecode } from "../src/media.js";
+import { displayDimensions, parseMediaTimecode } from "../src/media.js";
+
+test("uses display rotation when reporting portrait video dimensions", () => {
+  assert.deepEqual(displayDimensions({
+    width: 3840,
+    height: 2160,
+    side_data_list: [{ side_data_type: "Display Matrix", rotation: -90 }],
+  }), { width: 2160, height: 3840 });
+  assert.deepEqual(displayDimensions({
+    width: 1920,
+    height: 1080,
+    tags: { rotate: "90" },
+  }), { width: 1080, height: 1920 });
+});
+
+test("keeps encoded dimensions when display rotation does not change orientation", () => {
+  assert.deepEqual(displayDimensions({ width: 3840, height: 2160 }), { width: 3840, height: 2160 });
+  assert.deepEqual(displayDimensions({ width: 3840, height: 2160, side_data_list: [{ rotation: -180 }] }), { width: 3840, height: 2160 });
+});
 
 test("converts non-drop source timecode to absolute media frames", () => {
   assert.deepEqual(

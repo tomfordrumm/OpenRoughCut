@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { stripClientRuntime } from "../scripts/static-html.mjs";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -25,10 +27,29 @@ test("server-renders the OpenRoughCut landing page", async () => {
   assert.match(html, /Open code\./);
   assert.match(html, /Contributions/);
   assert.match(html, /github\.com\/tomfordrumm\/OpenRoughCut\/issues\/new/);
-  assert.match(html, /OpenRoughCut-0\.1\.2-mac-arm64\.dmg/);
-  assert.match(html, /OpenRoughCut-0\.1\.2-mac-x64\.dmg/);
-  assert.match(html, /OpenRoughCut-0\.1\.2-win-x64\.exe/);
-  assert.match(html, /releases\/download\/v0\.1\.2\/SHA256SUMS\.txt/);
+  assert.match(html, /OpenRoughCut-0\.1\.3-mac-arm64\.dmg/);
+  assert.match(html, /OpenRoughCut-0\.1\.3-mac-x64\.dmg/);
+  assert.match(html, /OpenRoughCut-0\.1\.3-win-x64\.exe/);
+  assert.match(html, /releases\/download\/v0\.1\.3\/SHA256SUMS\.txt/);
   assert.doesNotMatch(html, /releases\/(?:tag|download)\/v0\.1\.[01]/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|SkeletonPreview/);
+});
+
+test("download section links do not trap Chrome in smooth scrolling", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(css, /html\s*\{\s*scroll-behavior:\s*auto;\s*\}/);
+  assert.doesNotMatch(css, /html\s*\{\s*scroll-behavior:\s*smooth;/);
+});
+
+test("Yhub static HTML excludes the vinext client router", async () => {
+  const response = await render();
+  const html = stripClientRuntime(await response.text());
+
+  assert.match(html, /<link rel="stylesheet"/);
+  assert.match(html, /href="#download"/);
+  assert.match(html, /id="download"/);
+  assert.doesNotMatch(html, /<script\b/i);
+  assert.doesNotMatch(html, /rel="modulepreload"/i);
+  assert.doesNotMatch(html, /__VINEXT_RSC_|_rsc=/i);
 });

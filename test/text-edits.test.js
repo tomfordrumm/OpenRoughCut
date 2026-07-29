@@ -21,7 +21,7 @@ test("auto-applies an obvious false start and keeps the later complete take", ()
   ]);
   assert.equal(result.candidates[0].reason, "false-start");
   assert.equal(result.candidates[0].start, 10);
-  assert.equal(result.candidates[0].end, 15);
+  assert.equal(result.candidates[0].end, 12);
   assert.equal(result.applied.length, 1);
 });
 
@@ -31,11 +31,21 @@ test("auto-applies exact repeated takes but only suggests weaker matches", () =>
     { start: 5, end: 8, text: "Сегодня мы создадим новый проект." },
     { start: 12, end: 15, text: "Сегодня мы создадим наш новый проект." },
   ], { autoConfidence: 0.95 });
-  assert.ok(result.applied.some((item) => item.reason === "repeated-take" && item.start === 0 && item.end === 5));
+  assert.ok(result.applied.some((item) => item.reason === "repeated-take" && item.start === 0 && item.end === 3));
   assert.ok(result.candidates.length > result.applied.length);
 });
 
-test("ignores similar text outside the retry window", () => {
+test("uses the pause after a phrase as the retry window", () => {
+  const result = detectTextEdits([
+    { start: 0, end: 10, text: "Сегодня мы создадим новый проект." },
+    { start: 24, end: 30, text: "Сегодня мы создадим новый проект." },
+  ]);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].start, 0);
+  assert.equal(result.candidates[0].end, 10);
+});
+
+test("ignores similar text when the pause between phrases exceeds the retry window", () => {
   const result = detectTextEdits([
     { start: 0, end: 3, text: "Сегодня мы создадим новый проект." },
     { start: 30, end: 33, text: "Сегодня мы создадим новый проект." },
@@ -43,10 +53,37 @@ test("ignores similar text outside the retry window", () => {
   assert.deepEqual(result.candidates, []);
 });
 
-test("uses start-to-start retry distance when VAD stretches a segment across silence", () => {
+test("marks every earlier speech region in a three-take chain and points to the final take", () => {
+  const finalTake = "По сути классическая схема – дорогой архитектор и дешевый исполнитель звучит абсолютно логично.";
   const result = detectTextEdits([
-    { start: 0, end: 25, text: "Сегодня мы создадим новый проект." },
-    { start: 30, end: 33, text: "Сегодня мы создадим новый проект." },
+    { start: 38.69, end: 43.83, text: "По сути классическая схема – дорогой архитектор и дешевый исполнитель – абсолютная классика." },
+    { start: 45.29, end: 46.35, text: "А нет, только что сказали." },
+    { start: 47.42, end: 53.21, text: "По сути классическая схема – дорогой архитектор и дешевый исполнитель, вроде звучит логично." },
+    { start: 54.72, end: 60, text: finalTake },
   ]);
-  assert.deepEqual(result.candidates, []);
+  const repeated = result.candidates.filter((item) => item.reason === "repeated-take");
+  assert.deepEqual(repeated.map((item) => [item.start, item.end]), [[38.69, 43.83], [47.42, 53.21]]);
+  assert.ok(repeated.every((item) => item.keptText === finalTake));
+});
+
+test("finds a repeated take when one region contains a lead-in before the shared sentence", () => {
+  const finalTake = "Проблема только в том, что в реальных тестах эта схема оказалась одновременно дороже, медленнее и ничуть не лучше.";
+  const result = detectTextEdits([
+    { start: 91.84, end: 97.4, text: "Звучит абсолютно логично. Проблема только в том, что в реальных тестах эта схема оказалась на время дороже, медленнее." },
+    { start: 98.88, end: 102.69, text: "Проблема только в том, что в реальных тестах эта схема оказалась дороже." },
+    { start: 115.33, end: 124.32, text: finalTake },
+  ]);
+  assert.deepEqual(result.candidates.map((item) => item.start), [91.84, 98.88]);
+  assert.ok(result.candidates.every((item) => item.keptText === finalTake));
+});
+
+test("suggests an immediate short retry even when most words were transcribed badly", () => {
+  const result = detectTextEdits([
+    { start: 113.02, end: 114.77, text: "Проблема толкотом. Блесла." },
+    { start: 115.33, end: 124.32, text: "Проблема только в том, что в реальных тестах эта схема оказалась одновременно дороже, медленнее и ничуть не лучше." },
+  ]);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].reason, "false-start");
+  assert.equal(result.candidates[0].confidence, 0.78);
+  assert.equal(result.applied.length, 0);
 });

@@ -1,4 +1,5 @@
 import { analysisFingerprint } from "../../src/session.js";
+import { TRANSCRIPTION_MODEL_OPTIONS } from "../../src/transcription-models.js";
 
 const settings = { thresholdDb: -35, minimumSilence: 0.7, keepPause: 0.18 };
 const media = {
@@ -22,7 +23,9 @@ const readyRuntime = {
   ffmpeg: { ready: true, source: "bundled" },
   ffprobe: { ready: true, source: "bundled" },
   whisper: { ready: true, source: "bundled" },
-  model: { ready: true, source: "downloaded" },
+  selectedModelId: "base",
+  models: TRANSCRIPTION_MODEL_OPTIONS.map((model) => ({ ...model, ready: model.id === "base", source: model.id === "base" ? "downloaded" : null })),
+  model: { ...TRANSCRIPTION_MODEL_OPTIONS[0], ready: true, source: "downloaded" },
   vadModel: { ready: true, source: "downloaded" },
 };
 
@@ -36,7 +39,8 @@ export function createMockBridge(mode) {
     ffmpeg: { ready: false, source: null },
     ffprobe: { ready: false, source: null },
     whisper: { ready: true, source: "bundled" },
-    model: { ready: false, source: null },
+    models: TRANSCRIPTION_MODEL_OPTIONS.map((model) => ({ ...model, ready: false, source: null })),
+    model: { ...TRANSCRIPTION_MODEL_OPTIONS[0], ready: false, source: null },
     vadModel: { ready: false, source: null },
   };
   const recovered = mode === "workspace" ? {
@@ -47,8 +51,9 @@ export function createMockBridge(mode) {
     projectResolution: "source",
     exportFormat: "final-cut",
     includeTranscript: false,
+    removeNonVerbal: true,
     textConfidence: 0.9,
-    analysisSignature: analysisFingerprint({ settings, includeTranscript: false, textConfidence: 0.9 }),
+    analysisSignature: analysisFingerprint({ settings, includeTranscript: false, removeNonVerbal: true, textConfidence: 0.9 }),
     analysis: { silences: [], silenceRemovals: automaticRemovals, automaticRemovals, textCandidates: [], transcript: null },
     manualOverrides: [{ id: "mock-keep", action: "keep", start: 98, end: 101, originKey: null }],
     sessionPath: "/Users/demo/interview.roughcut",
@@ -66,6 +71,7 @@ export function createMockBridge(mode) {
     analyze: async () => ({ media, silences: [], silenceRemovals: automaticRemovals, automaticRemovals, textCandidates: [], transcript: null }),
     saveSession: async () => ({ path: "/Users/demo/interview.roughcut", savedAt: new Date().toISOString() }),
     autosaveSession: async () => ({ path: "/Users/demo/recovery-session.json", savedAt: new Date().toISOString() }),
+    closeSession: async () => ({ closed: true }),
     recoverSession: async () => recovered,
     loadSession: async () => recovered,
     finishSessionFlush: () => {},

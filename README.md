@@ -79,7 +79,7 @@ npm run app
 The interface keeps every edit in the original recording's source time:
 
 1. Choose a local video. OpenRoughCut creates and caches a lightweight H.264/AAC playback proxy automatically; the original media is never replaced.
-2. Optionally enable **Find false starts and repeated takes** to run local Whisper analysis.
+2. Enable **Remove sounds without words** to automatically cut isolated sighs, clicks, and humming. Optionally enable **Find false starts and repeated takes**; both run locally with Whisper.
 3. Click **Analyse source**. Progress is visible and the operation can be cancelled.
 4. Adjust silence threshold, minimum silence, pause to keep, or transcript confidence, then re-analyse explicitly. Changed settings mark old results as out of date and disable export until analysis is refreshed.
 5. Click any red silence or purple transcript region to inspect the decision. Choose **Keep this region** to override an applied removal, or **Remove this take** to accept a transcript suggestion.
@@ -98,7 +98,7 @@ npm run app:preview
 
 Sources use a bounded 720p H.264/AAC proxy with frequent keyframes for predictable Chromium playback and fast jumps across large cuts. Proxies are stored in the operating-system cache and reused while the source path, size, and modification time remain unchanged. Every timeline export still references the untouched original recording.
 
-Public macOS and Windows packages use `electron-builder` and bundle the private whisper.cpp runtime. On first launch, one setup approval downloads and verifies the editing engine and on-device speech models; users do not need Terminal or a package manager. FFmpeg and FFprobe are deliberately excluded from the app installer. See [docs/RELEASING.md](docs/RELEASING.md) for runtime layout, signing, licensing, and installer commands.
+Public macOS and Windows packages use `electron-builder` and bundle the private whisper.cpp runtime. Setup lets users choose Base (fastest), Small (balanced), or Large-v3 Turbo (best accuracy), then downloads and verifies only that on-device speech model. Previously installed tiers remain selectable without another download. Users do not need Terminal or a package manager. FFmpeg and FFprobe are deliberately excluded from the app installer. See [docs/RELEASING.md](docs/RELEASING.md) for runtime layout, signing, licensing, and installer commands.
 
 Use **Storage** in the top toolbar to inspect that cache. The storage manager shows every proxy, its source name when known, modification date, size, and whether it belongs to the currently open source. Proxies can be deleted individually or all at once. Deleting the current proxy only disables playback until **Rebuild preview** is clicked; analysis, manual decisions, sessions, originals, and exported timelines are never removed.
 
@@ -123,9 +123,9 @@ Then enable transcript-based editing:
 node src/cli.js recording.mov --transcribe
 ```
 
-Whisper runs locally, uses voice-activity detection to reject silence, and automatically detects the spoken language. Exact repeated takes and strong false starts are added to the timeline cuts. Ambiguous matches are preserved and written as suggestions in the JSON report.
+Whisper runs locally, detects the spoken language from one representative speech region, and reuses that language for the remaining regions. Exact token timestamps protect real words while short isolated sounds with no lexical speech are merged into their surrounding silence and removed conservatively. Transcript regions use pauses up to 0.5 seconds so quick retries can be separated without changing the user's silence-removal setting. Each region is transcribed independently, compared with nearby speech, and kept as the exact unit of any transcript edit. Exact repeated takes and strong false starts are added to the timeline cuts. Ambiguous matches are preserved and written as suggestions in the JSON report.
 
-Use `--text-suggestions-only` to generate a transcript and suggestions without applying text edits. Adjust the conservative auto-remove threshold with `--text-confidence 0.9`, or pass a specific model with `--whisper-model /path/to/model.bin`.
+Use `--remove-non-verbal` to apply the same isolated-sound cleanup from the CLI. Use `--text-suggestions-only` to generate a transcript and suggestions without applying text edits. Adjust the conservative auto-remove threshold with `--text-confidence 0.9`, or pass a specific model with `--whisper-model /path/to/model.bin`.
 
 ## Calibrating a recording
 

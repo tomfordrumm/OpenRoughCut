@@ -1,8 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("roughcut", {
-  runtimeStatus: () => ipcRenderer.invoke("runtime:status"),
-  installDependencies: () => ipcRenderer.invoke("runtime:install"),
+  runtimeStatus: (request) => ipcRenderer.invoke("runtime:status", request),
+  installDependencies: (request) => ipcRenderer.invoke("runtime:install", request),
   cancelOperation: () => ipcRenderer.invoke("operation:cancel"),
   showLogs: () => ipcRenderer.invoke("diagnostics:show-logs"),
   chooseVideo: () => ipcRenderer.invoke("video:choose"),
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("roughcut", {
   analyze: (request) => ipcRenderer.invoke("video:analyze", request),
   saveSession: (session) => ipcRenderer.invoke("session:save", session),
   autosaveSession: (session) => ipcRenderer.invoke("session:autosave", session),
+  closeSession: (request) => ipcRenderer.invoke("session:close", request),
   recoverSession: () => ipcRenderer.invoke("session:recover"),
   loadSession: () => ipcRenderer.invoke("session:load"),
   finishSessionFlush: () => ipcRenderer.send("session:flush-complete"),

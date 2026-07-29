@@ -7,27 +7,31 @@ import { createAppLogger } from "../src/app-logger.js";
 import { applyManualOverrides } from "../src/edit-plan.js";
 import { detectSilences, probeMedia } from "../src/media.js";
 import { createMediaResponse } from "../src/media-stream.js";
+import { buildSoundIslands, detectNonVerbalSounds, nonVerbalSilenceSettings } from "../src/nonverbal.js";
 import { previewKeyframeOptions } from "../src/playback.js";
 import { run } from "../src/process.js";
-import { resolveProjectResolution } from "../src/resolution.js";
-import { addTextCuts, buildSegments, secondsToFrames } from "../src/segments.js";
+import { reconcileProxyMetadata } from "../src/proxy-metadata.js";
+import { PROJECT_RESOLUTIONS as PROJECT_RESOLUTION_OPTIONS, resolveProjectResolution } from "../src/resolution.js";
+import { addTextCuts, buildSegments, buildSpeechRegions, secondsToFrames, transcriptionSilenceSettings } from "../src/segments.js";
 import { detectTextEdits } from "../src/text-edits.js";
 import { transcribeMedia } from "../src/transcribe.js";
 import { createTimelineDocument, timelineExportFor } from "../src/timeline-export.js";
 import { analysisFingerprint, SESSION_VERSION } from "../src/session.js";
 import { inspectRuntimeDependencies, installMissingDependencies } from "../src/runtime-dependencies.js";
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, isTranscriptionModelId } from "../src/transcription-models.js";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 const mediaSources = new Map();
 const mediaTokens = new Map();
 const MAX_SESSION_BYTES = 50 * 1024 * 1024;
-const PROJECT_RESOLUTIONS = new Set(["source", "4k", "full-hd"]);
+const PROJECT_RESOLUTIONS = new Set(Object.keys(PROJECT_RESOLUTION_OPTIONS));
 const PROXY_ID = /^[a-f0-9]{24}$/;
 const PARTIAL_PROXY = /\.partial\.mp4$/;
 const PARTIAL_PROXY_MAX_AGE = 24 * 60 * 60 * 1_000;
 const VIDEO_PROBE_TIMEOUT_MS = 60_000;
 let activeOperation = null;
 let runtimeStatus = null;
+let selectedTranscriptionModelId = DEFAULT_TRANSCRIPTION_MODEL_ID;
 let recoveryWrite = Promise.resolve();
 let appLogger = {
   filePath: null,
@@ -110,12 +114,30 @@ function writeRecovery(document) {
   return recoveryWrite;
 }
 
-async function refreshRuntimeStatus() {
+function clearRecovery() {
+  recoveryWrite = recoveryWrite.catch(() => {}).then(async () => {
+    try {
+      await unlink(autosavePath());
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  });
+  return recoveryWrite;
+}
+
+function assertTranscriptionModelId(value) {
+  if (!isTranscriptionModelId(value)) throw new Error("Unknown transcription model.");
+  return value;
+}
+
+async function refreshRuntimeStatus(modelId = selectedTranscriptionModelId) {
   try {
+    selectedTranscriptionModelId = assertTranscriptionModelId(modelId);
     runtimeStatus = await inspectRuntimeDependencies({
       resourcesPath: process.resourcesPath,
       userDataPath: app.getPath("userData"),
       developmentRoot: app.isPackaged ? null : path.resolve(import.meta.dirname, ".."),
+      selectedModelId: selectedTranscriptionModelId,
     });
     appLogger.info("runtime.checked", {
       platform: runtimeStatus.platform,
@@ -204,11 +226,14 @@ async function cleanupPartialProxies(cacheDirectory) {
 
 async function writeProxyMetadata(cacheDirectory, source, signature) {
   const metadataPath = path.join(cacheDirectory, `${signature}.json`);
+  let existing = null;
   try {
-    await stat(metadataPath);
-  } catch {
-    await writeFile(metadataPath, `${JSON.stringify(proxyMetadata(source, signature), null, 2)}\n`, "utf8");
+    existing = JSON.parse(await readFile(metadataPath, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
   }
+  const { metadata, needsWrite } = reconcileProxyMetadata(existing, proxyMetadata(source, signature));
+  if (needsWrite) await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
 }
 
 async function listProxyCache(activeSourceId) {
@@ -338,9 +363,11 @@ function assertSettings(settings) {
 
 function assertAnalysisOptions(request) {
   const includeTranscript = request?.includeTranscript === true;
+  const removeNonVerbal = request?.removeNonVerbal === true;
   const textConfidence = Number(request?.textConfidence ?? 0.9);
   if (!Number.isFinite(textConfidence) || textConfidence < 0.5 || textConfidence > 0.99) throw new Error("Text confidence must be between 0.5 and 0.99.");
-  return { includeTranscript, textConfidence };
+  const transcriptionModelId = assertTranscriptionModelId(request?.transcriptionModelId ?? DEFAULT_TRANSCRIPTION_MODEL_ID);
+  return { includeTranscript, removeNonVerbal, textConfidence, transcriptionModelId };
 }
 
 function sanitizeText(value, maximum = 2_000) {
@@ -355,7 +382,7 @@ function sanitizedAnalysis(value, media) {
     const [start, end] = clampRange(Number(item?.start), Number(item?.end), media.duration);
     return {
       id: sanitizeText(item?.id, 100) || randomUUID(),
-      reason: item?.reason === "false-start" ? "false-start" : "repeated-take",
+      reason: item?.reason === "false-start" ? "false-start" : item?.reason === "non-verbal" ? "non-verbal" : "repeated-take",
       start,
       end,
       confidence: Math.max(0, Math.min(1, Number(item?.confidence) || 0)),
@@ -445,10 +472,11 @@ function sessionDocument(session, source, sessionPath = null) {
   const projectResolution = assertProjectResolution(session.projectResolution);
   const exportFormat = assertExportFormat(session.exportFormat);
   const includeTranscript = session.includeTranscript === true;
-  const textConfidence = assertAnalysisOptions(session).textConfidence;
+  const removeNonVerbal = session.removeNonVerbal === true;
+  const { textConfidence, transcriptionModelId } = assertAnalysisOptions(session);
   const analysis = sanitizedAnalysis(session.analysis, source.media);
   const manualOverrides = sanitizedManualOverrides(session.manualOverrides ?? [], source.media.duration);
-  const computedSignature = analysisFingerprint({ settings, includeTranscript, textConfidence });
+  const computedSignature = analysisFingerprint({ settings, includeTranscript, removeNonVerbal, textConfidence, transcriptionModelId });
   const analysisSignature = typeof session.analysisSignature === "string" && session.analysisSignature === computedSignature
     ? session.analysisSignature
     : null;
@@ -461,7 +489,9 @@ function sessionDocument(session, source, sessionPath = null) {
     projectResolution,
     exportFormat,
     includeTranscript,
+    removeNonVerbal,
     textConfidence,
+    transcriptionModelId,
     analysisSignature,
     analysis,
     manualOverrides,
@@ -485,10 +515,13 @@ async function loadSessionFile(filePath, { recovery = false } = {}) {
   const analysis = sanitizedAnalysis(session.analysis, media);
   const manualOverrides = sanitizedManualOverrides(session.manualOverrides ?? [], media.duration);
   const includeTranscript = session.version === 1 ? Boolean(analysis.transcript) : session.includeTranscript === true;
-  const textConfidence = assertAnalysisOptions({ textConfidence: session.textConfidence ?? 0.9 }).textConfidence;
-  const fallbackSignature = analysisFingerprint({ settings, includeTranscript, textConfidence });
+  const removeNonVerbal = session.removeNonVerbal === true;
+  const { textConfidence, transcriptionModelId } = assertAnalysisOptions({
+    textConfidence: session.textConfidence ?? 0.9,
+    transcriptionModelId: session.transcriptionModelId ?? DEFAULT_TRANSCRIPTION_MODEL_ID,
+  });
   const analysisSignature = session.version === 1
-    ? fallbackSignature
+    ? null
     : typeof session.analysisSignature === "string" ? session.analysisSignature : null;
   const storedSessionPath = recovery ? sanitizeText(session.sessionPath, 5_000) || null : filePath;
   return {
@@ -497,7 +530,9 @@ async function loadSessionFile(filePath, { recovery = false } = {}) {
     projectResolution,
     exportFormat,
     includeTranscript,
+    removeNonVerbal,
     textConfidence,
+    transcriptionModelId,
     analysisSignature,
     analysis,
     manualOverrides,
@@ -518,10 +553,11 @@ function registerIpc() {
     window.close();
   });
 
-  ipcMain.handle("runtime:status", async () => refreshRuntimeStatus());
+  ipcMain.handle("runtime:status", async (_event, request) => refreshRuntimeStatus(request?.transcriptionModelId ?? selectedTranscriptionModelId));
 
-  ipcMain.handle("runtime:install", async (event) => runOperation(event, "setup", async (signal) => {
-    const before = await currentRuntimeStatus();
+  ipcMain.handle("runtime:install", async (event, request) => runOperation(event, "setup", async (signal) => {
+    const modelId = assertTranscriptionModelId(request?.transcriptionModelId ?? selectedTranscriptionModelId);
+    const before = await refreshRuntimeStatus(modelId);
     sendProgress(event.sender, "setup", "running", "Preparing OpenRoughCut…", 0);
     await installMissingDependencies(before, {
       signal,
@@ -595,9 +631,12 @@ function registerIpc() {
     const settings = assertSettings(request.settings);
     const options = assertAnalysisOptions(request);
     const source = sourceForId(request.sourceId);
-    const runtime = await currentRuntimeStatus();
+    const speechAnalysisEnabled = options.includeTranscript || options.removeNonVerbal;
+    const runtime = speechAnalysisEnabled
+      ? await refreshRuntimeStatus(options.transcriptionModelId)
+      : await currentRuntimeStatus();
     if (!runtime.ffmpeg.ready) throw new Error("FFmpeg is not available. Complete setup before analysing audio.");
-    if (options.includeTranscript && !runtime.transcriptionReady) throw new Error("Transcription setup is incomplete. Install the missing components first.");
+    if (speechAnalysisEnabled && !runtime.transcriptionReady) throw new Error("Speech analysis setup is incomplete. Install the missing components first.");
     await stat(source.sourcePath);
     sendProgress(event.sender, "analysis", "running", "Reading audio waveform…");
     try {
@@ -607,20 +646,58 @@ function registerIpc() {
       let segments = silenceSegments;
       let transcript = null;
       let textCandidates = [];
-      if (options.includeTranscript) {
+      if (speechAnalysisEnabled) {
+        sendProgress(event.sender, "analysis", "running", "Finding quick retry pauses…");
+        const transcriptSettings = transcriptionSilenceSettings(settings);
+        const transcriptSilences = transcriptSettings.minimumSilence === settings.minimumSilence
+          ? silences
+          : await detectSilences(source.sourcePath, transcriptSettings, { signal, ffmpegCommand: runtime.ffmpeg.command });
         sendProgress(event.sender, "analysis", "running", "Transcribing speech locally with Whisper…");
-        transcript = await transcribeMedia(source.sourcePath, {
+        const speechRegions = buildSpeechRegions(transcriptSilences, media.duration, {
+          minimumSpeechSeconds: options.removeNonVerbal ? 0.02 : 0.3,
+        });
+        const transcription = await transcribeMedia(source.sourcePath, {
+          regions: speechRegions,
           signal,
           ffmpegCommand: runtime.ffmpeg.command,
           whisperCommand: runtime.whisper.command,
           modelPath: runtime.model.path,
           vadModelPath: runtime.vadModel.path,
         });
-        sendProgress(event.sender, "analysis", "running", "Finding false starts and repeated takes…");
-        const textEdits = detectTextEdits(transcript.segments, { autoConfidence: options.textConfidence });
-        const applied = new Set(textEdits.applied);
-        textCandidates = textEdits.candidates.map((item) => ({ ...item, id: randomUUID(), applied: applied.has(item) }));
-        segments = addTextCuts(silenceSegments, textEdits.applied, media.frameRate);
+        transcript = options.includeTranscript ? {
+          language: transcription.language,
+          segments: transcription.segments,
+          text: transcription.text,
+        } : null;
+
+        let nonVerbal = { candidates: [], applied: [] };
+        if (options.removeNonVerbal) {
+          sendProgress(event.sender, "analysis", "running", "Finding isolated sounds without words…");
+          const soundSettings = nonVerbalSilenceSettings(settings);
+          const soundSilences = soundSettings.minimumSilence === transcriptSettings.minimumSilence
+            ? transcriptSilences
+            : await detectSilences(source.sourcePath, soundSettings, { signal, ffmpegCommand: runtime.ffmpeg.command });
+          nonVerbal = detectNonVerbalSounds(buildSoundIslands(soundSilences, media.duration), {
+            tokens: transcription.tokens,
+            utterances: transcription.utterances,
+          });
+          segments = buildSegments([
+            ...silences,
+            ...nonVerbal.applied.map((item) => ({ start: item.start, end: item.end })),
+          ], media.duration, media.frameRate, settings.keepPause);
+        }
+
+        let textEdits = { candidates: [], applied: [] };
+        if (options.includeTranscript) {
+          sendProgress(event.sender, "analysis", "running", "Finding false starts and repeated takes…");
+          textEdits = detectTextEdits(transcription.segments, { autoConfidence: options.textConfidence });
+          segments = addTextCuts(segments, textEdits.applied, media.frameRate);
+        }
+        const appliedText = new Set(textEdits.applied);
+        textCandidates = [
+          ...nonVerbal.candidates,
+          ...textEdits.candidates.map((item) => ({ ...item, applied: appliedText.has(item) })),
+        ].map((item) => ({ ...item, id: randomUUID() }));
       }
       sendProgress(event.sender, "analysis", "done", `Found ${segments.removals.length} applied cuts`, 100);
       return { media, silences, silenceRemovals: silenceSegments.removals, automaticRemovals: segments.removals, transcript, textCandidates };
@@ -651,6 +728,14 @@ function registerIpc() {
     const document = sessionDocument(session, source, source.sessionPath);
     await writeRecovery(document);
     return { path: autosavePath(), savedAt: document.savedAt };
+  });
+
+  ipcMain.handle("session:close", async (_event, request) => {
+    const source = sourceForId(request?.sourceId);
+    mediaSources.delete(request.sourceId);
+    mediaTokens.delete(source.mediaToken);
+    await clearRecovery();
+    return { closed: true };
   });
 
   ipcMain.handle("session:recover", async () => {

@@ -4,10 +4,11 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { downloadFile, EDITING_RUNTIME_DOWNLOADS, extractRuntimeFiles, installationPlan, MODEL_DOWNLOADS } from "../src/runtime-dependencies.js";
+import { downloadFile, EDITING_RUNTIME_DOWNLOADS, extractRuntimeFiles, installationPlan, MODEL_DOWNLOADS, TRANSCRIPTION_MODEL_DOWNLOADS } from "../src/runtime-dependencies.js";
 
 test("runtime model downloads are pinned and integrity checked", () => {
-  assert.deepEqual(MODEL_DOWNLOADS.map((item) => item.key), ["model", "vadModel"]);
+  assert.deepEqual(TRANSCRIPTION_MODEL_DOWNLOADS.map((item) => item.id), ["base", "small", "large-v3-turbo"]);
+  assert.deepEqual(MODEL_DOWNLOADS.map((item) => item.key), ["model", "model", "model", "vadModel"]);
   for (const item of MODEL_DOWNLOADS) {
     assert.match(item.url, /^https:\/\//);
     assert.doesNotMatch(item.url, /\/main\//);
@@ -40,13 +41,14 @@ test("installation plan includes only missing capabilities", () => {
     arch: "arm64",
     ffmpeg: { ready: false },
     ffprobe: { ready: true },
+    selectedModelId: "small",
     model: { ready: false },
     vadModel: { ready: true },
   });
   assert.equal(plan.supported, true);
   assert.deepEqual(plan.archives.map((item) => item.key), ["ffmpeg-archive"]);
   assert.deepEqual(plan.models.map((item) => item.key), ["model"]);
-  assert.equal(plan.exactBytes, 28_196_358 + 147_951_465);
+  assert.equal(plan.exactBytes, 28_196_358 + 487_601_967);
 });
 
 test("downloadFile verifies content before replacing its destination", async () => {

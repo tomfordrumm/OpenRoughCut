@@ -20,7 +20,7 @@ The currently pinned FFmpeg 8.1.2 downloads include libx264 and are GPL builds. 
 
 The official Windows whisper.cpp release uses the Microsoft Visual C++ runtime. OpenRoughCut's NSIS installer checks the x64 runtime registry entry and, when it is missing, installs the pinned Microsoft redistributable from `vendor/win32-x64/prerequisites`. The redistributable is an installer prerequisite only and is not copied into the installed app.
 
-Transcription model files are not placed in the installer. The same first-run approval downloads the multilingual base model and Silero VAD model into OpenRoughCut's user-data directory. Every download is pinned and integrity checked, and cancelled or failed setup removes its staging files.
+Transcription model files are not placed in the installer. Setup downloads the user's selected multilingual Base, Small, or Large-v3 Turbo model plus the Silero VAD model into OpenRoughCut's user-data directory. Only the selected Whisper tier is downloaded; installed tiers remain available when the preference changes. Every download is pinned and integrity checked, and cancelled or failed setup removes its staging files.
 
 ## Build commands
 
@@ -35,7 +35,7 @@ npm run dist:win
 
 ## Automated releases
 
-Push a version commit to `main`, then push the matching annotated tag (for example, `v0.1.2`). `.github/workflows/release.yml` validates that the tag matches `package.json`, runs the application and website tests, reconstructs the ignored native runtime from pinned checksum-verified sources, and builds each installer on its native operating system. After every target succeeds, the workflow publishes the tag as a GitHub Release with all five platform artifacts and `SHA256SUMS.txt`.
+Push a version commit to `main`, then push the matching annotated tag (for example, `v0.1.3`). `.github/workflows/release.yml` validates that the tag matches `package.json`, runs the application and website tests, reconstructs the ignored native runtime from pinned checksum-verified sources, and builds each installer on its native operating system. After every target succeeds, the workflow publishes the tag as a GitHub Release with all five platform artifacts and `SHA256SUMS.txt`.
 
 The Apple Silicon and Intel `whisper-cli` binaries are recovered from the checksum-pinned 0.1.1 release packages because whisper.cpp does not publish standalone macOS CLI archives. The Windows runtime and Visual C++ prerequisite are fetched from their pinned upstream URLs. `scripts/prepare-release-runtime.mjs` verifies the archive and every extracted binary before packaging.
 

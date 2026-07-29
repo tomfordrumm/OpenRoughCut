@@ -27,7 +27,98 @@ function parseTranscription(data) {
   };
 }
 
+export function parseRegionTranscription(data, region) {
+  const text = (data.transcription ?? [])
+    .map((segment) => String(segment?.text ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!text) return null;
+  return {
+    language: data.result?.language ?? "unknown",
+    start: region.start,
+    end: region.end,
+    text,
+  };
+}
+
+function absoluteOffset(region, milliseconds) {
+  const audioStart = Number(region?.audioStart ?? region?.start) || 0;
+  return Number((audioStart + (Number(milliseconds) / 1000)).toFixed(6));
+}
+
+export function parseRegionTiming(data, region) {
+  const utterances = [];
+  const tokens = [];
+  for (const segment of data.transcription ?? []) {
+    const start = absoluteOffset(region, segment?.offsets?.from);
+    const end = absoluteOffset(region, segment?.offsets?.to);
+    const text = String(segment?.text ?? "").trim();
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start && text) {
+      utterances.push({ start, end, text });
+    }
+    for (const token of segment?.tokens ?? []) {
+      const tokenText = String(token?.text ?? "");
+      if (!tokenText || /^\[_.*_\]$/u.test(tokenText) || /^<\|.*\|>$/u.test(tokenText)) continue;
+      const tokenStart = absoluteOffset(region, token?.offsets?.from);
+      const rawEnd = absoluteOffset(region, token?.offsets?.to);
+      if (!Number.isFinite(tokenStart) || !Number.isFinite(rawEnd)) continue;
+      tokens.push({
+        start: tokenStart,
+        end: Math.max(rawEnd, Number((tokenStart + 0.02).toFixed(6))),
+        text: tokenText,
+        probability: Math.max(0, Math.min(1, Number(token?.p) || 0)),
+      });
+    }
+  }
+  return { utterances, tokens };
+}
+
+export function whisperArguments({ modelPath, audioPaths, vadModelPath, language, useGpu = true }) {
+  const args = [
+    "-m", modelPath,
+    "-l", language,
+    "--vad",
+    "-vm", vadModelPath,
+    "-vsd", "500",
+    "-vp", "100",
+    "-ojf",
+    "-np",
+    ...audioPaths,
+  ];
+  if (!useGpu) args.unshift("-ng");
+  return args;
+}
+
+async function mapConcurrent(items, maximumConcurrency, callback) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await callback(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(maximumConcurrency, items.length) }, worker));
+  return results;
+}
+
+function dominantLanguage(items) {
+  const counts = new Map();
+  for (const item of items) counts.set(item.language, (counts.get(item.language) ?? 0) + 1);
+  return [...counts.entries()].sort((first, second) => second[1] - first[1])[0]?.[0] ?? "unknown";
+}
+
+function languageDetectionJob(jobs) {
+  return jobs.reduce((best, job) => {
+    const duration = job.region.audioEnd - job.region.audioStart;
+    const bestDuration = best.region.audioEnd - best.region.audioStart;
+    return duration > bestDuration ? job : best;
+  });
+}
+
 export async function transcribeMedia(inputPath, {
+  regions = [],
   modelPath = DEFAULT_WHISPER_MODEL,
   vadModelPath = DEFAULT_VAD_MODEL,
   language = "auto",
@@ -35,6 +126,8 @@ export async function transcribeMedia(inputPath, {
   signal,
   ffmpegCommand = "ffmpeg",
   whisperCommand = "whisper-cli",
+  runCommand = run,
+  extractionConcurrency = 4,
 } = {}) {
   const resolvedModel = path.resolve(modelPath);
   const resolvedVadModel = path.resolve(vadModelPath);
@@ -49,12 +142,26 @@ export async function transcribeMedia(inputPath, {
     throw new Error(`Whisper VAD model not found: ${resolvedVadModel}. See README.md for setup instructions.`);
   }
 
+  const preparedRegions = regions
+    .map((region) => ({
+      start: Number(region?.start),
+      end: Number(region?.end),
+      audioStart: Number(region?.audioStart ?? region?.start),
+      audioEnd: Number(region?.audioEnd ?? region?.end),
+    }))
+    .filter((region) => Number.isFinite(region.start)
+      && Number.isFinite(region.end)
+      && Number.isFinite(region.audioStart)
+      && Number.isFinite(region.audioEnd)
+      && region.end > region.start
+      && region.audioEnd > region.audioStart);
+  if (!preparedRegions.length) return { language: "unknown", segments: [], text: "", utterances: [], tokens: [] };
+
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "roughcut-transcribe-"));
   const audioPath = path.join(temporaryDirectory, "audio.wav");
-  const outputBase = path.join(temporaryDirectory, "transcript");
 
   try {
-    await run(ffmpegCommand, [
+    await runCommand(ffmpegCommand, [
       "-y", "-hide_banner", "-loglevel", "error",
       "-i", inputPath,
       "-map", "0:a:0", "-vn",
@@ -62,23 +169,67 @@ export async function transcribeMedia(inputPath, {
       audioPath,
     ], { signal });
 
-    const whisperArgs = [
-      "-m", resolvedModel,
-      "-f", audioPath,
-      "-l", language,
-      "--vad",
-      "-vm", resolvedVadModel,
-      "-vsd", "500",
-      "-vp", "100",
-      "-ojf",
-      "-of", outputBase,
-      "-np",
-    ];
-    if (!useGpu) whisperArgs.unshift("-ng");
-    await run(whisperCommand, whisperArgs, { signal });
+    const jobs = await mapConcurrent(preparedRegions, Math.max(1, extractionConcurrency), async (region, index) => {
+      const regionPath = path.join(temporaryDirectory, `region-${String(index).padStart(5, "0")}.wav`);
+      await runCommand(ffmpegCommand, [
+        "-y", "-hide_banner", "-loglevel", "error",
+        "-ss", String(region.audioStart),
+        "-t", String(region.audioEnd - region.audioStart),
+        "-i", audioPath,
+        "-c:a", "pcm_s16le",
+        regionPath,
+      ], { signal });
+      return { region, regionPath };
+    });
 
-    const data = JSON.parse(await readFile(`${outputBase}.json`, "utf8"));
-    return parseTranscription(data);
+    let gpuEnabled = useGpu;
+    const transcribeJobs = async (targetJobs, targetLanguage) => {
+      const invoke = async () => {
+        await runCommand(whisperCommand, whisperArguments({
+          modelPath: resolvedModel,
+          audioPaths: targetJobs.map((job) => job.regionPath),
+          vadModelPath: resolvedVadModel,
+          language: targetLanguage,
+          useGpu: gpuEnabled,
+        }), { signal });
+        await Promise.all(targetJobs.map((job) => access(`${job.regionPath}.json`)));
+      };
+      try {
+        await invoke();
+      } catch (error) {
+        if (!gpuEnabled || signal?.aborted) throw error;
+        gpuEnabled = false;
+        await invoke();
+      }
+    };
+
+    let resolvedLanguage = language;
+    let detectedJob = null;
+    if (language === "auto") {
+      detectedJob = languageDetectionJob(jobs);
+      await transcribeJobs([detectedJob], "auto");
+      const detection = JSON.parse(await readFile(`${detectedJob.regionPath}.json`, "utf8"));
+      resolvedLanguage = detection.result?.language ?? "auto";
+    }
+
+    const remainingJobs = detectedJob ? jobs.filter((job) => job !== detectedJob) : jobs;
+    if (remainingJobs.length) await transcribeJobs(remainingJobs, resolvedLanguage);
+
+    const parsed = await Promise.all(jobs.map(async ({ region, regionPath }) => {
+      const data = JSON.parse(await readFile(`${regionPath}.json`, "utf8"));
+      return {
+        segment: parseRegionTranscription(data, region),
+        timing: parseRegionTiming(data, region),
+      };
+    }));
+    const segments = parsed.map((item) => item.segment).filter(Boolean);
+    return {
+      language: resolvedLanguage === "auto" ? dominantLanguage(segments) : resolvedLanguage,
+      segments: segments.map(({ language: _language, ...segment }) => segment),
+      text: segments.map((segment) => segment.text).join(" "),
+      utterances: parsed.flatMap((item) => item.timing.utterances),
+      tokens: parsed.flatMap((item) => item.timing.tokens),
+    };
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }

@@ -2,14 +2,21 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { applyManualOverrides, removalAtFrame } from "../../src/edit-plan.js";
 import { playbackFrameAtTime, seekTimeAfterRemoval } from "../../src/playback.js";
 import { analysisFingerprint, analysisIsCurrent } from "../../src/session.js";
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeTranscriptionModelId } from "../../src/transcription-models.js";
 import "./styles.css";
 
 const DEFAULT_SETTINGS = { thresholdDb: -35, minimumSilence: 0.7, keepPause: 0.18 };
 const EMPTY_ANALYSIS = { silences: [], silenceRemovals: [], automaticRemovals: [], textCandidates: [], transcript: null };
-const PROJECT_RESOLUTIONS = [
-  { value: "source", label: "Source" },
-  { value: "4k", label: "UHD 4K · 3840×2160" },
-  { value: "full-hd", label: "Full HD · 1920×1080" },
+const TRANSCRIPTION_MODEL_STORAGE_KEY = "openroughcut.transcriptionModel";
+const PROJECT_RESOLUTION_GROUPS = [
+  { label: "LANDSCAPE · 16:9", options: [
+    { value: "4k", label: "UHD 4K · 3840×2160" },
+    { value: "full-hd", label: "Full HD · 1920×1080" },
+  ] },
+  { label: "VERTICAL · 9:16", options: [
+    { value: "vertical-4k", label: "Vertical UHD 4K · 2160×3840" },
+    { value: "vertical-full-hd", label: "Vertical Full HD · 1080×1920" },
+  ] },
 ];
 const EXPORT_FORMATS = [
   { value: "final-cut", label: "Final Cut Pro", button: "FCPXML" },
@@ -27,7 +34,7 @@ function timecode(value = 0, frameRate = { numerator: 30, denominator: 1 }) {
 const framesToSeconds = (frames, rate) => frames * rate.denominator / rate.numerator;
 const secondsToFrames = (seconds, rate) => Math.round(seconds * rate.numerator / rate.denominator);
 const removedSeconds = (ranges, rate) => ranges.reduce((sum, range) => sum + framesToSeconds(range.endFrame - range.startFrame, rate), 0);
-const candidateLabel = (reason) => reason === "false-start" ? "False start" : reason === "repeated-take" ? "Repeated take" : reason === "remove" ? "Manual removal" : reason === "keep" ? "Manual keep" : "Silence";
+const candidateLabel = (reason) => reason === "false-start" ? "False start" : reason === "repeated-take" ? "Repeated take" : reason === "non-verbal" ? "Non-word sound" : reason === "remove" ? "Manual removal" : reason === "keep" ? "Manual keep" : "Silence";
 const formatBytes = (bytes = 0) => {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB", "TB"];
@@ -39,31 +46,33 @@ const formatDuration = (seconds) => Number.isFinite(seconds) ? timecode(seconds)
 function Icon({ children }) { return <span className="icon" aria-hidden="true">{children}</span>; }
 function ToolButton({ children, className = "", ...props }) { return <button className={`tool-button ${className}`} {...props}>{children}</button>; }
 
-function ProjectSwitchDialog({ action, currentName, saving, onCancel, onContinue, onSaveAndContinue }) {
+function ProjectSwitchDialog({ action, currentName, saving, closing, onCancel, onContinue, onSaveAndContinue }) {
   const openingSavedProject = action === "open";
+  const closingProject = action === "close";
+  const pending = saving || closing;
   useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !saving) onCancel(); };
+    const onKey = (event) => { if (event.key === "Escape" && !pending) onCancel(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [saving, onCancel]);
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onCancel(); }}>
+  }, [pending, onCancel]);
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !pending) onCancel(); }}>
     <section className="project-switch-modal" role="dialog" aria-modal="true" aria-labelledby="project-switch-title">
-      <header><div><span>SWITCH PROJECT</span><h2 id="project-switch-title">{openingSavedProject ? "Open another project?" : "Start a new project?"}</h2></div><button onClick={onCancel} disabled={saving} aria-label="Close">×</button></header>
+      <header><div><span>{closingProject ? "CLOSE PROJECT" : "SWITCH PROJECT"}</span><h2 id="project-switch-title">{closingProject ? "Return to the start screen?" : openingSavedProject ? "Open another project?" : "Start a new project?"}</h2></div><button onClick={onCancel} disabled={pending} aria-label="Close">×</button></header>
       <div className="project-switch-copy">
         <strong title={currentName}>{currentName}</strong>
-        <p>{openingSavedProject ? "Opening a saved project will close the video currently on your timeline." : "A new project starts with a different source video and an empty timeline."}</p>
+        <p>{closingProject ? "Closing this project returns you to the start screen and clears its recovery copy." : openingSavedProject ? "Opening a saved project will close the video currently on your timeline." : "A new project starts with a different source video and an empty timeline."}</p>
         <p>Save the current project first if you want to return to these edits later.</p>
       </div>
       <footer>
-        <button className="secondary" onClick={onCancel} disabled={saving}>Cancel</button>
-        <button className="secondary danger" onClick={onContinue} disabled={saving}>Continue without saving</button>
-        <button className="primary" onClick={onSaveAndContinue} disabled={saving}>{saving ? "Saving…" : "Save current & continue"}</button>
+        <button className="secondary" onClick={onCancel} disabled={pending}>Cancel</button>
+        <button className="secondary danger" onClick={onContinue} disabled={pending}>{closing ? "Closing…" : closingProject ? "Close without saving" : "Continue without saving"}</button>
+        <button className="primary" onClick={onSaveAndContinue} disabled={pending}>{saving ? "Saving…" : closingProject ? "Save current & close" : "Save current & continue"}</button>
       </footer>
     </section>
   </div>;
 }
 
-function SetupManager({ runtime, blocking = false, installing, operation, error, onInstall, onCancel, onClose, onShowLogs }) {
+function SetupManager({ runtime, transcriptionModelId, blocking = false, installing, operation, error, onModelChange, onInstall, onCancel, onClose, onShowLogs }) {
   const editingReady = Boolean(runtime?.ffmpeg?.ready && runtime?.ffprobe?.ready);
   const transcriptionReady = Boolean(runtime?.whisper?.ready && runtime?.model?.ready && runtime?.vadModel?.ready);
   const allReady = editingReady && transcriptionReady;
@@ -77,6 +86,7 @@ function SetupManager({ runtime, blocking = false, installing, operation, error,
         {row("Video editing", editingReady, [runtime?.ffmpeg, runtime?.ffprobe], "Editing engine will be downloaded")}
         {row("Private transcription", transcriptionReady, [runtime?.whisper, runtime?.model, runtime?.vadModel], "Speech models will be downloaded")}
       </div>
+      <label className="model-picker"><span><strong>Transcription quality</strong><small>Only the selected model will be downloaded. Previously installed models remain available.</small></span><select value={transcriptionModelId} onChange={(event) => onModelChange(event.target.value)} disabled={installing}>{(runtime?.models ?? []).map((model) => <option key={model.id} value={model.id}>{model.label} · {model.detail}{model.ready ? " · installed" : ""}</option>)}</select><small>{runtime?.models?.find((model) => model.id === transcriptionModelId)?.description}</small></label>
       {!runtime?.canInstall && !allReady && <div className="setup-warning"><strong>Automatic setup is unavailable on this computer.</strong><span>Reinstall OpenRoughCut from the correct official installer. Your videos and saved sessions will not be removed.</span></div>}
       {error && <div className="setup-error">{error}</div>}
       {installing && <div className="setup-progress" role="status" aria-live="polite"><div><i style={{ width: `${operation?.percent ?? 4}%` }}/></div><span>{operation?.message ?? "Preparing OpenRoughCut…"}</span></div>}
@@ -215,7 +225,7 @@ function Timeline({ media, decisions, textCandidates, manualOverrides, selection
       <div className="ruler">{ticks.map((tick) => <div className="tick" key={tick} style={{ left: `${tick / duration * 100}%` }}><span>{timecode(tick, media.frameRate).slice(0, 8)}</span></div>)}</div>
       <div className="track track-source"><span className="track-label">SOURCE</span></div>
       <div className="track track-auto"><span className="track-label">SILENCE</span>{visible(decisions).map((item) => rangeButton(item, "auto-range", "automatic"))}</div>
-      {textCandidates.length > 0 && <div className="track track-text"><span className="track-label">TRANSCRIPT</span>{visible(textCandidates).map((item) => rangeButton(item, `text-range ${item.applied ? "applied" : "suggested"}`, "text"))}</div>}
+      {textCandidates.length > 0 && <div className="track track-text"><span className="track-label">SPEECH</span>{visible(textCandidates).map((item) => rangeButton(item, `text-range ${item.applied ? "applied" : "suggested"}`, "text"))}</div>}
       <div className="track track-manual"><span className="track-label">MANUAL</span>{visible(manualOverrides).map((item) => rangeButton({ ...item, key: `manual:${item.id}`, reason: item.action, start: item.start, end: item.end }, `manual-range ${item.action}`, "manual"))}</div>
       <div className="playhead" style={{ left: `${currentTime / duration * 100}%` }}><span /></div>
     </div>
@@ -237,13 +247,18 @@ function App() {
   const [projectResolution, setProjectResolution] = useState("source");
   const [exportFormat, setExportFormat] = useState("final-cut");
   const [includeTranscript, setIncludeTranscript] = useState(false);
+  const [removeNonVerbal, setRemoveNonVerbal] = useState(true);
   const [textConfidence, setTextConfidence] = useState(0.9);
+  const [transcriptionModelId, setTranscriptionModelId] = useState(() => typeof window === "undefined"
+    ? DEFAULT_TRANSCRIPTION_MODEL_ID
+    : normalizeTranscriptionModelId(window.localStorage.getItem(TRANSCRIPTION_MODEL_STORAGE_KEY)));
   const [zoom, setZoom] = useState(2);
   const [currentTime, setCurrentTime] = useState(0);
   const [preview, setPreview] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [closingProject, setClosingProject] = useState(false);
   const [openingVideo, setOpeningVideo] = useState(false);
   const [proxyBusy, setProxyBusy] = useState(false);
   const [setupBusy, setSetupBusy] = useState(false);
@@ -259,8 +274,9 @@ function App() {
   const [previewError, setPreviewError] = useState(null);
   const [playbackError, setPlaybackError] = useState(null);
   const media = source?.media;
-  const operationBusy = busy || proxyBusy || setupBusy || saving || openingVideo;
-  const analysisInput = useMemo(() => ({ settings, includeTranscript, textConfidence }), [settings, includeTranscript, textConfidence]);
+  const operationBusy = busy || proxyBusy || setupBusy || saving || closingProject || openingVideo;
+  const speechAnalysisEnabled = includeTranscript || removeNonVerbal;
+  const analysisInput = useMemo(() => ({ settings, includeTranscript, removeNonVerbal, textConfidence, transcriptionModelId }), [settings, includeTranscript, removeNonVerbal, textConfidence, transcriptionModelId]);
   const analysisCurrent = analysisIsCurrent(analysisSignature, analysisInput);
   const analysisStale = Boolean(analysisSignature) && !analysisCurrent;
 
@@ -361,18 +377,26 @@ function App() {
     setPast([]); setFuture([]); setSelection(null); setCurrentTime(0); setPreview(true); setPlaying(false); setZoom(2); setPreviewError(null); setPlaybackError(null); roughSeekRef.current = false;
     if (loaded) {
       setSettings(loaded.settings); setProjectResolution(loaded.projectResolution ?? "source"); setExportFormat(loaded.exportFormat ?? "final-cut");
-      setIncludeTranscript(loaded.includeTranscript === true); setTextConfidence(loaded.textConfidence ?? 0.9);
+      setIncludeTranscript(loaded.includeTranscript === true); setRemoveNonVerbal(loaded.removeNonVerbal === true); setTextConfidence(loaded.textConfidence ?? 0.9);
     } else {
-      setSettings(DEFAULT_SETTINGS); setProjectResolution("source"); setExportFormat("final-cut"); setIncludeTranscript(false); setTextConfidence(0.9);
+      setSettings(DEFAULT_SETTINGS); setProjectResolution("source"); setExportFormat("final-cut"); setIncludeTranscript(false); setRemoveNonVerbal(true); setTextConfidence(0.9);
     }
     buildPreview(next);
   }, [buildPreview]);
+
+  const resetProject = useCallback(() => {
+    videoRef.current?.pause();
+    setSource(null); setSessionPath(null); setSettings(DEFAULT_SETTINGS); setAnalysis(EMPTY_ANALYSIS); setAnalysisSignature(null); setManualOverrides([]);
+    setPast([]); setFuture([]); setSelection(null); setProjectResolution("source"); setExportFormat("final-cut"); setIncludeTranscript(false); setRemoveNonVerbal(true); setTextConfidence(0.9);
+    setZoom(2); setCurrentTime(0); setPreview(true); setPlaying(false); setOperation(null); setStorageOpen(false); setPreviewError(null); setPlaybackError(null); roughSeekRef.current = false;
+    setAutosaveState({ tone: "idle", text: "" });
+  }, []);
 
   useEffect(() => {
     let alive = true;
     const bootstrap = async () => {
       try {
-        const nextRuntime = await window.roughcut.runtimeStatus();
+        const nextRuntime = await window.roughcut.runtimeStatus({ transcriptionModelId });
         if (!alive) return;
         setRuntime(nextRuntime);
         if (!nextRuntime.coreReady || !nextRuntime.transcriptionReady) setSetupOpen(true);
@@ -398,11 +422,13 @@ function App() {
     projectResolution,
     exportFormat,
     includeTranscript,
+    removeNonVerbal,
     textConfidence,
+    transcriptionModelId,
     analysisSignature,
     analysis,
     manualOverrides,
-  } : null, [source?.sourceId, sessionPath, settings, projectResolution, exportFormat, includeTranscript, textConfidence, analysisSignature, analysis, manualOverrides]);
+  } : null, [source?.sourceId, sessionPath, settings, projectResolution, exportFormat, includeTranscript, removeNonVerbal, textConfidence, transcriptionModelId, analysisSignature, analysis, manualOverrides]);
 
   useEffect(() => {
     if (booting || !sessionPayload) return undefined;
@@ -446,9 +472,9 @@ function App() {
     const nextSignature = analysisFingerprint(analysisInput);
     setBusy(true); setOperation({ operation: "analysis", phase: "running", message: "Starting analysis…", percent: null });
     try {
-      const result = await window.roughcut.analyze({ sourceId: source.sourceId, settings, includeTranscript, textConfidence });
+      const result = await window.roughcut.analyze({ sourceId: source.sourceId, settings, includeTranscript, removeNonVerbal, textConfidence, transcriptionModelId });
       setAnalysis(result); setAnalysisSignature(nextSignature); setSelection(null);
-      setStatus({ tone: "success", text: `${result.automaticRemovals.length} applied cuts · ${result.textCandidates?.filter((item) => !item.applied).length ?? 0} text suggestions` });
+      setStatus({ tone: "success", text: `${result.automaticRemovals.length} applied cuts · ${result.textCandidates?.filter((item) => !item.applied).length ?? 0} review suggestions` });
     } catch (error) { setStatus({ tone: /cancelled/i.test(error.message) ? "idle" : "error", text: /cancelled/i.test(error.message) ? "Analysis cancelled" : error.message }); }
     finally { setBusy(false); }
   };
@@ -474,7 +500,21 @@ function App() {
     }
     catch (error) { setStatus({ tone: "error", text: error.message }); return false; }
   };
-  const performProjectSwitch = async (action) => action === "open" ? loadSession() : chooseVideo();
+  const closeProject = async () => {
+    if (!source || operationBusy) return false;
+    setClosingProject(true);
+    let closeError = null;
+    try { await window.roughcut.closeSession({ sourceId: source.sourceId }); }
+    catch (error) { closeError = error; }
+    resetProject();
+    setProjectSwitchAction(null);
+    setStatus(closeError
+      ? { tone: "error", text: `Project closed, but its recovery copy could not be cleared · ${closeError.message}` }
+      : { tone: "idle", text: "Choose a recording to begin" });
+    setClosingProject(false);
+    return !closeError;
+  };
+  const performProjectSwitch = async (action) => action === "open" ? loadSession() : action === "close" ? closeProject() : chooseVideo();
   const requestProjectSwitch = (action) => {
     if (operationBusy) return;
     if (source) setProjectSwitchAction(action);
@@ -484,7 +524,7 @@ function App() {
     const action = projectSwitchAction;
     if (!action) return;
     if (saveFirst && !await saveSession()) return;
-    setProjectSwitchAction(null);
+    if (action !== "close") setProjectSwitchAction(null);
     await performProjectSwitch(action);
   };
 
@@ -502,14 +542,22 @@ function App() {
   const exportProject = async () => {
     if (!source || operationBusy || !analysisCurrent) return;
     setBusy(true);
-    try { const result = await window.roughcut.exportProject({ sourceId: source.sourceId, settings, includeTranscript, textConfidence, analysisSignature, projectResolution, exportFormat, automaticRemovals: analysis.automaticRemovals, manualOverrides }); if (result) setStatus({ tone: "success", text: `${result.label} exported · ${result.keptRanges} retained ranges${result.importNote ? ` · ${result.importNote}` : ""}` }); }
+    try { const result = await window.roughcut.exportProject({ sourceId: source.sourceId, settings, includeTranscript, removeNonVerbal, textConfidence, transcriptionModelId, analysisSignature, projectResolution, exportFormat, automaticRemovals: analysis.automaticRemovals, manualOverrides }); if (result) setStatus({ tone: "success", text: `${result.label} exported · ${result.keptRanges} retained ranges${result.importNote ? ` · ${result.importNote}` : ""}` }); }
     catch (error) { setStatus({ tone: "error", text: error.message }); }
     finally { setBusy(false); }
   };
   const cancelOperation = async () => { await window.roughcut.cancelOperation(); };
+  const chooseTranscriptionModel = async (modelId) => {
+    const normalized = normalizeTranscriptionModelId(modelId);
+    setTranscriptionModelId(normalized);
+    window.localStorage.setItem(TRANSCRIPTION_MODEL_STORAGE_KEY, normalized);
+    setSetupError(null);
+    try { setRuntime(await window.roughcut.runtimeStatus({ transcriptionModelId: normalized })); }
+    catch (error) { setSetupError(error.message); }
+  };
   const prepareOpenRoughCut = async () => {
     setSetupBusy(true); setSetupError(null);
-    try { const next = await window.roughcut.installDependencies(); setRuntime(next); if (next.coreReady) setSetupOpen(false); }
+    try { const next = await window.roughcut.installDependencies({ transcriptionModelId }); setRuntime(next); if (next.coreReady && next.transcriptionReady) setSetupOpen(false); }
     catch (error) { if (!/cancelled/i.test(error.message)) setSetupError(error.message); }
     finally { setSetupBusy(false); }
   };
@@ -560,9 +608,9 @@ function App() {
         <ToolButton className="primary" onClick={exportProject} disabled={!source || operationBusy || !analysisCurrent} title={analysisStale ? "Settings changed. Re-analyse before exporting." : !analysisSignature ? "Analyse the source before exporting." : undefined}><Icon>↗</Icon> Export {selectedExport.button}</ToolButton>
       </div>}
     </header>
-    {!runtime?.coreReady ? <SetupManager runtime={runtime} blocking installing={setupBusy} operation={operation} error={setupError} onInstall={prepareOpenRoughCut} onCancel={cancelOperation} onClose={() => {}} onShowLogs={showLogs}/> : !source ? <section className="empty-state"><p className="eyebrow">EDIT FASTER, STAY IN CONTROL</p><h1>Remove silence.<br/><em>Keep every decision editable.</em></h1><p>Create a project from one recording, review the suggested cuts, and export an editable timeline to your video editor.</p><div className="empty-actions"><ToolButton className="hero-button" onClick={() => requestProjectSwitch("new")} disabled={openingVideo}>{openingVideo ? "Inspecting selected video…" : "Create project from video"} <Icon>{openingVideo ? "…" : "→"}</Icon></ToolButton><button className="open-project-link" onClick={() => requestProjectSwitch("open")} disabled={openingVideo}>Open a saved project</button></div>{(openingVideo || status.tone === "error") && <div className={`empty-open-status ${status.tone}`} role="status" aria-live="polite"><div><strong>{openingVideo ? "Inspecting video" : "Could not open video"}</strong><span>{status.text}</span></div>{status.tone === "error" && <button onClick={showLogs}>SHOW DIAGNOSTIC LOG</button>}</div>}<div className="format-note">MOV · MP4 · M4V · MKV · WEBM <span>Final Cut Pro · Premiere Pro · Resolve</span></div></section> :
+    {!runtime?.coreReady ? <SetupManager runtime={runtime} transcriptionModelId={transcriptionModelId} blocking installing={setupBusy} operation={operation} error={setupError} onModelChange={chooseTranscriptionModel} onInstall={prepareOpenRoughCut} onCancel={cancelOperation} onClose={() => {}} onShowLogs={showLogs}/> : !source ? <section className="empty-state"><p className="eyebrow">EDIT FASTER, STAY IN CONTROL</p><h1>Remove silence.<br/><em>Keep every decision editable.</em></h1><p>Create a project from one recording, review the suggested cuts, and export an editable timeline to your video editor.</p><div className="empty-actions"><ToolButton className="hero-button" onClick={() => requestProjectSwitch("new")} disabled={openingVideo}>{openingVideo ? "Inspecting selected video…" : "Create project from video"} <Icon>{openingVideo ? "…" : "→"}</Icon></ToolButton><button className="open-project-link" onClick={() => requestProjectSwitch("open")} disabled={openingVideo}>Open a saved project</button></div>{(openingVideo || status.tone === "error") && <div className={`empty-open-status ${status.tone}`} role="status" aria-live="polite"><div><strong>{openingVideo ? "Inspecting video" : "Could not open video"}</strong><span>{status.text}</span></div>{status.tone === "error" && <button onClick={showLogs}>SHOW DIAGNOSTIC LOG</button>}</div>}<div className="format-note">MOV · MP4 · M4V · MKV · WEBM <span>Final Cut Pro · Premiere Pro · Resolve</span></div></section> :
       <div className="workspace">
-        <section className="viewer-panel panel"><div className="panel-heading"><span>Preview</span><button onClick={() => requestProjectSwitch("new")} disabled={operationBusy}>Start new project</button></div><div className="viewer">
+        <section className="viewer-panel panel"><div className="panel-heading"><span>Preview</span><button onClick={() => requestProjectSwitch("close")} disabled={operationBusy}>Close project</button></div><div className="viewer">
           {source.previewUrl && <video ref={videoRef} key={source.previewUrl} src={source.previewUrl} preload="auto" onTimeUpdate={onTimeUpdate} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedData={() => setPlaybackError(null)} onError={onVideoError} playsInline />}
           {proxyBusy && <div className="process-overlay"><span className="spinner large"/><strong>Preparing smooth playback</strong><span>{operation?.message}</span><div className="progress-track"><i style={{ width: `${operation?.percent ?? 8}%` }}/></div><output>{operation?.percent == null ? "Working…" : `${operation.percent}%`}</output><button onClick={cancelOperation}>Cancel</button></div>}
           {!source.previewUrl && !proxyBusy && !previewError && <div className="media-error"><strong>Preview proxy not available</strong><span>The original video and all edit decisions are still intact.</span><button onClick={() => buildPreview(source)}>REBUILD PREVIEW</button></div>}
@@ -572,23 +620,31 @@ function App() {
         </div><div className="transport"><button className="transport-play" onClick={togglePlayback} disabled={!source.previewUrl} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button><output>{timecode(currentTime, media.frameRate)}</output><input className="transport-line" aria-label="Source position" type="range" min="0" max={media.duration} step={media.frameRate.denominator / media.frameRate.numerator} value={Math.min(currentTime, media.duration)} onChange={(event) => seek(Number(event.target.value))}/><button className={`preview-toggle ${preview ? "active" : ""}`} onClick={() => setPreview(!preview)} title="Skip removed regions during playback"><i/> Edited preview {preview ? "on" : "off"}</button></div></section>
 
         <aside className="inspector panel"><div className="panel-heading"><span>Analysis</span><span className={`status-lamp ${status.tone}`}/></div><div className="source-meta"><strong title={source.name}>{source.name}</strong><dl><div><dt>Resolution</dt><dd>{media.width}×{media.height}</dd></div><div><dt>Frame rate</dt><dd>{(media.frameRate.numerator / media.frameRate.denominator).toFixed(2)} fps</dd></div><div><dt>Duration</dt><dd>{timecode(media.duration, media.frameRate).slice(0, 8)}</dd></div></dl></div>
-          <fieldset className="control-stack" disabled={operationBusy}><label><span>Silence threshold <b>{settings.thresholdDb} dB</b></span><small>Audio quieter than this is treated as silence.</small><input type="range" min="-60" max="-15" step="1" value={settings.thresholdDb} onChange={(e) => setSettings({ ...settings, thresholdDb: Number(e.target.value) })}/></label><label><span>Minimum silence <b>{settings.minimumSilence.toFixed(2)} s</b></span><input type="range" min="0.2" max="3" step="0.05" value={settings.minimumSilence} onChange={(e) => { const minimumSilence = Number(e.target.value); setSettings({ ...settings, minimumSilence, keepPause: Math.min(settings.keepPause, Math.max(0, minimumSilence - 0.05)) }); }}/></label><label><span>Pause to keep <b>{settings.keepPause.toFixed(2)} s</b></span><input type="range" min="0" max={Math.max(0.05, settings.minimumSilence - 0.05)} step="0.01" value={Math.min(settings.keepPause, settings.minimumSilence - 0.05)} onChange={(e) => setSettings({ ...settings, keepPause: Number(e.target.value) })}/></label><label className="select-label"><span>Timeline resolution{exportFormat === "resolve" && <b>SET AFTER IMPORT</b>}</span><select value={projectResolution} onChange={(e) => setProjectResolution(e.target.value)}>{PROJECT_RESOLUTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}{option.value === "source" ? ` · ${media.width}×${media.height}` : ""}</option>)}</select>{exportFormat === "resolve" && <small className="control-note">OTIO cannot set this automatically. Apply the selected resolution in Resolve after import.</small>}</label></fieldset>
-          <div className="transcribe-control"><label><input type="checkbox" checked={includeTranscript} onChange={(e) => setIncludeTranscript(e.target.checked)} disabled={operationBusy || !runtime.transcriptionReady}/><span><b>Find false starts and repeated takes</b><small>{runtime.transcriptionReady ? "Uses on-device Whisper transcription" : "Open Setup to install transcription models"}</small></span></label>{!runtime.transcriptionReady && <button className="setup-link" onClick={() => setSetupOpen(true)}>Open Setup</button>}{includeTranscript && <label className="confidence"><span>Auto-remove confidence <b>{Math.round(textConfidence * 100)}%</b></span><input type="range" min="0.7" max="0.99" step="0.01" value={textConfidence} onChange={(e) => setTextConfidence(Number(e.target.value))} disabled={operationBusy}/></label>}</div>
+          <fieldset className="control-stack" disabled={operationBusy}><label><span>Silence threshold <b>{settings.thresholdDb} dB</b></span><small>Audio quieter than this is treated as silence.</small><input type="range" min="-60" max="-15" step="1" value={settings.thresholdDb} onChange={(e) => setSettings({ ...settings, thresholdDb: Number(e.target.value) })}/></label><label><span>Minimum silence <b>{settings.minimumSilence.toFixed(2)} s</b></span><input type="range" min="0.2" max="3" step="0.05" value={settings.minimumSilence} onChange={(e) => { const minimumSilence = Number(e.target.value); setSettings({ ...settings, minimumSilence, keepPause: Math.min(settings.keepPause, Math.max(0, minimumSilence - 0.05)) }); }}/></label><label><span>Pause to keep <b>{settings.keepPause.toFixed(2)} s</b></span><input type="range" min="0" max={Math.max(0.05, settings.minimumSilence - 0.05)} step="0.01" value={Math.min(settings.keepPause, settings.minimumSilence - 0.05)} onChange={(e) => setSettings({ ...settings, keepPause: Number(e.target.value) })}/></label><label className="select-label"><span>Timeline resolution{exportFormat === "resolve" && <b>SET AFTER IMPORT</b>}</span><select value={projectResolution} onChange={(e) => setProjectResolution(e.target.value)}><option value="source">Source · {media.width}×{media.height} ({media.height > media.width ? "vertical" : media.width > media.height ? "landscape" : "square"})</option>{PROJECT_RESOLUTION_GROUPS.map((group) => <optgroup key={group.label} label={group.label}>{group.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>)}</select>{exportFormat === "resolve" && <small className="control-note">OTIO cannot set this automatically. Apply the selected resolution in Resolve after import.</small>}</label></fieldset>
+          <div className="transcribe-control"><label><input type="checkbox" checked={removeNonVerbal} onChange={(e) => setRemoveNonVerbal(e.target.checked)} disabled={operationBusy || !runtime.transcriptionReady}/><span><b>Remove sounds without words</b><small>Automatically cuts isolated sighs, clicks, and humming</small></span></label><label><input type="checkbox" checked={includeTranscript} onChange={(e) => setIncludeTranscript(e.target.checked)} disabled={operationBusy || !runtime.transcriptionReady}/><span><b>Find false starts and repeated takes</b><small>{runtime.transcriptionReady ? `Uses ${runtime.model?.label ?? "Whisper"} on this computer` : "Open Setup to install the selected transcription model"}</small></span></label>{!runtime.transcriptionReady && <button className="setup-link" onClick={() => setSetupOpen(true)}>Open Setup</button>}{includeTranscript && <label className="confidence"><span>Auto-remove confidence <b>{Math.round(textConfidence * 100)}%</b></span><input type="range" min="0.7" max="0.99" step="0.01" value={textConfidence} onChange={(e) => setTextConfidence(Number(e.target.value))} disabled={operationBusy}/></label>}</div>
           {analysisStale && <div className="analysis-warning"><strong>Analysis is out of date.</strong><span>Settings changed. Re-analyse to update the timeline and enable export.</span></div>}
           {!analysisSignature && <div className="analysis-notice">Analyse this source to create suggested cuts.</div>}
-          <ToolButton className={`analyze-button ${busy ? "cancel" : ""}`} onClick={busy ? cancelOperation : analyze} disabled={!busy && (proxyBusy || setupBusy)}>{busy ? <>Cancel analysis</> : <>{analysisSignature ? "Re-analyse" : "Analyse source"} <Icon>↻</Icon></>}</ToolButton><div className={`status-line ${status.tone}`} role="status" aria-live="polite"><span>{status.text}</span>{busy && <i className="indeterminate"/>}</div>
+          <ToolButton className={`analyze-button ${busy ? "cancel" : ""}`} onClick={busy ? cancelOperation : analyze} disabled={!busy && (proxyBusy || setupBusy || (speechAnalysisEnabled && !runtime.transcriptionReady))}>{busy ? <>Cancel analysis</> : <>{analysisSignature ? "Re-analyse" : "Analyse source"} <Icon>↻</Icon></>}</ToolButton><div className={`status-line ${status.tone}`} role="status" aria-live="polite"><span>{status.text}</span>{busy && <i className="indeterminate"/>}</div>
           <div className="summary-meters"><div><span>Suggested cuts</span><strong>{analysis.automaticRemovals?.length ?? 0}</strong></div><div><span>Manual edits</span><strong>{manualOverrides.length}</strong></div><div className="wide"><span>Removed / total</span><strong>{timecode(removed, media.frameRate).slice(0, 8)} <small>/ {timecode(media.duration, media.frameRate).slice(0, 8)}</small></strong></div></div>
-          {analysis.textCandidates?.length > 0 && <section className="transcript-panel"><header><span>Transcript suggestions</span><b>{analysis.textCandidates.length}</b></header>{displayedTextCandidates.map((item, index) => { const key = `text:${item.id ?? index}`; return <button key={key} className={`${item.applied ? "applied" : "suggested"} ${selection?.key === key ? "selected" : ""}`} onClick={() => { selectDecision({ ...item, key, kind: "text" }); seek(item.start); }}><span>{candidateLabel(item.reason)} · {Math.round(item.confidence * 100)}% <i>{item.applied ? "REMOVING" : "REVIEW"}</i></span><strong>{item.removedText}</strong><small>Keep: {item.keptText}</small></button>; })}{analysis.textCandidates.length > displayedTextCandidates.length && <p>Showing the first {displayedTextCandidates.length} suggestions. All suggestions remain visible on the timeline.</p>}</section>}
+          {analysis.textCandidates?.length > 0 && <section className="transcript-panel"><header><span>Speech decisions</span><b>{analysis.textCandidates.length}</b></header>{displayedTextCandidates.map((item, index) => { const key = `text:${item.id ?? index}`; return <button key={key} className={`${item.applied ? "applied" : "suggested"} ${selection?.key === key ? "selected" : ""}`} onClick={() => { selectDecision({ ...item, key, kind: "text" }); seek(item.start); }}><span>{candidateLabel(item.reason)} · {Math.round(item.confidence * 100)}% <i>{item.applied ? "REMOVING" : "REVIEW"}</i></span><strong>{item.removedText}</strong><small>{item.reason === "non-verbal" ? "No spoken words in this isolated sound" : `Keep: ${item.keptText}`}</small></button>; })}{analysis.textCandidates.length > displayedTextCandidates.length && <p>Showing the first {displayedTextCandidates.length} suggestions. All suggestions remain visible on the timeline.</p>}</section>}
         </aside>
 
         <section className="timeline-panel panel"><div className="timeline-toolbar"><div><strong>Timeline</strong></div><div className="edit-tools"><ToolButton onClick={undo} disabled={!past.length} title="Undo (⌘Z)">↶</ToolButton><ToolButton onClick={redo} disabled={!future.length} title="Redo (⇧⌘Z)">↷</ToolButton><label className="zoom-control">− <input aria-label="Timeline zoom" type="range" min="0.5" max="20" step="0.5" value={zoom} onChange={(e) => setZoom(Number(e.target.value))}/> +</label></div></div>
           <Timeline media={media} decisions={silenceDecisions} textCandidates={textDecisions} manualOverrides={manualOverrides} selection={selection} onSelect={selectDecision} onCreateRemove={(start, end) => createOverride("remove", start, end)} onSeek={seek} currentTime={currentTime} zoom={zoom}/>
-          <div className="selection-bar">{selectedManual ? <><span>Manual edit</span><output>{timecode(selectedManual.start, media.frameRate)} — {timecode(selectedManual.end, media.frameRate)}</output><button className={selectedManual.action === "remove" ? "active remove" : ""} onClick={() => setSelectedAction("remove")}>Remove <kbd>R</kbd></button><button className={selectedManual.action === "keep" ? "active keep" : ""} onClick={() => setSelectedAction("keep")}>Keep <kbd>K</kbd></button><button onClick={clearSelectedOverride}>Clear <kbd>⌫</kbd></button></> : selection ? <><span>{candidateLabel(selection.reason)}</span><output>{timecode(selection.start, media.frameRate)} — {timecode(selection.end, media.frameRate)}</output>{selection.applied ? <><button className="keep" onClick={() => createOverride("keep", selection.start, selection.end, selection.key)}>Keep region</button><button onClick={useAutomaticDecision}>Use suggestion</button></> : <button className="remove" onClick={() => createOverride("remove", selection.start, selection.end, selection.key)}>Remove take</button>}</> : <span className="selection-hint">Click a colored region to review it, or drag anywhere on the timeline to remove a range.</span>}</div>
+          <div className="selection-bar">{selectedManual ? <><span>Manual edit</span><output>{timecode(selectedManual.start, media.frameRate)} — {timecode(selectedManual.end, media.frameRate)}</output><button className={selectedManual.action === "remove" ? "active remove" : ""} onClick={() => setSelectedAction("remove")}>Remove <kbd>R</kbd></button><button className={selectedManual.action === "keep" ? "active keep" : ""} onClick={() => setSelectedAction("keep")}>Keep <kbd>K</kbd></button><button onClick={clearSelectedOverride}>Clear <kbd>⌫</kbd></button></> : selection ? <><span>{candidateLabel(selection.reason)}</span><output>{timecode(selection.start, media.frameRate)} — {timecode(selection.end, media.frameRate)}</output>{selection.applied ? <><button className="keep" onClick={() => createOverride("keep", selection.start, selection.end, selection.key)}>Keep region</button><button onClick={useAutomaticDecision}>Use suggestion</button></> : <button className="remove" onClick={() => createOverride("remove", selection.start, selection.end, selection.key)}>{selection.reason === "non-verbal" ? "Remove sound" : "Remove take"}</button>}</> : <span className="selection-hint">Click a colored region to review it, or drag anywhere on the timeline to remove a range.</span>}</div>
         </section>
       </div>}
     {storageOpen && <StorageManager sourceId={source?.sourceId} onClose={() => setStorageOpen(false)} onDeleted={onProxiesDeleted}/>} 
-    {setupOpen && runtime?.coreReady && <SetupManager runtime={runtime} installing={setupBusy} operation={operation} error={setupError} onInstall={prepareOpenRoughCut} onCancel={cancelOperation} onClose={() => setSetupOpen(false)} onShowLogs={showLogs}/>}
-    {projectSwitchAction && <ProjectSwitchDialog action={projectSwitchAction} currentName={source?.name} saving={saving} onCancel={() => setProjectSwitchAction(null)} onContinue={() => continueProjectSwitch()} onSaveAndContinue={() => continueProjectSwitch({ saveFirst: true })}/>}
+    {setupOpen && runtime?.coreReady && <SetupManager runtime={runtime} transcriptionModelId={transcriptionModelId} installing={setupBusy} operation={operation} error={setupError} onModelChange={chooseTranscriptionModel} onInstall={prepareOpenRoughCut} onCancel={cancelOperation} onClose={() => setSetupOpen(false)} onShowLogs={showLogs}/>}
+    {projectSwitchAction && <ProjectSwitchDialog
+      action={projectSwitchAction}
+      currentName={source?.name}
+      saving={saving}
+      closing={closingProject}
+      onCancel={() => setProjectSwitchAction(null)}
+      onContinue={() => continueProjectSwitch()}
+      onSaveAndContinue={() => continueProjectSwitch({ saveFirst: true })}
+    />}
   </main>;
 }
 

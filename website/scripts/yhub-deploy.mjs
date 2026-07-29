@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { stripClientRuntime } from "./static-html.mjs";
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const envPath = path.join(projectDir, ".env");
@@ -76,7 +77,8 @@ async function renderStaticPage() {
   await mkdir(path.join(bundleDir, "assets"), { recursive: true });
   await cp(path.join(projectDir, "dist/client/assets"), path.join(bundleDir, "assets"), { recursive: true });
   await cp(path.join(projectDir, "dist/client/og.png"), path.join(bundleDir, "og.png"));
-  await writeFile(path.join(bundleDir, "index.html"), await response.text());
+  const html = stripClientRuntime(await response.text());
+  await writeFile(path.join(bundleDir, "index.html"), html);
 
   await rm(archivePath, { force: true });
   execFileSync("zip", ["-q", "-r", archivePath, "."], { cwd: bundleDir });

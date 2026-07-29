@@ -2,6 +2,63 @@ export function secondsToFrames(seconds, frameRate) {
   return Math.round(seconds * frameRate.numerator / frameRate.denominator);
 }
 
+function stableSeconds(seconds) {
+  return Number(seconds.toFixed(6));
+}
+
+export const MAX_TRANSCRIPTION_PAUSE_SECONDS = 0.5;
+
+export function transcriptionSilenceSettings(settings) {
+  return {
+    thresholdDb: Number(settings?.thresholdDb),
+    minimumSilence: Math.min(Number(settings?.minimumSilence), MAX_TRANSCRIPTION_PAUSE_SECONDS),
+  };
+}
+
+export function buildSpeechRegions(silences, durationSeconds, {
+  minimumSpeechSeconds = 0.3,
+  transcriptionPaddingSeconds = 0.2,
+  mergeSilenceGapSeconds = 0.05,
+} = {}) {
+  const duration = Math.max(0, Number(durationSeconds) || 0);
+  const normalizedSilences = (silences ?? [])
+    .map((silence) => ({
+      start: Math.max(0, Math.min(duration, Number(silence?.start))),
+      end: Math.max(0, Math.min(duration, Number(silence?.end))),
+    }))
+    .filter((silence) => Number.isFinite(silence.start)
+      && Number.isFinite(silence.end)
+      && silence.end > silence.start)
+    .sort((first, second) => first.start - second.start || first.end - second.end);
+  const mergedSilences = [];
+  for (const silence of normalizedSilences) {
+    const previous = mergedSilences.at(-1);
+    if (previous && silence.start <= previous.end + mergeSilenceGapSeconds) {
+      previous.end = Math.max(previous.end, silence.end);
+    } else {
+      mergedSilences.push({ ...silence });
+    }
+  }
+
+  const regions = [];
+  let cursor = 0;
+  const addRegion = (start, end) => {
+    if (end - start < minimumSpeechSeconds) return;
+    regions.push({
+      start: stableSeconds(start),
+      end: stableSeconds(end),
+      audioStart: stableSeconds(Math.max(0, start - transcriptionPaddingSeconds)),
+      audioEnd: stableSeconds(Math.min(duration, end + transcriptionPaddingSeconds)),
+    });
+  };
+  for (const silence of mergedSilences) {
+    addRegion(cursor, silence.start);
+    cursor = Math.max(cursor, silence.end);
+  }
+  addRegion(cursor, duration);
+  return regions;
+}
+
 function keepsFromRemovals(removals, durationFrames) {
   const keeps = [];
   let cursor = 0;

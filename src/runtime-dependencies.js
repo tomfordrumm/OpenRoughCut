@@ -3,9 +3,11 @@ import { createReadStream } from "node:fs";
 import { access, chmod, mkdir, mkdtemp, open, readdir, rename, rm, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { run } from "./process.js";
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, TRANSCRIPTION_MODEL_OPTIONS, normalizeTranscriptionModelId } from "./transcription-models.js";
 
-export const MODEL_DOWNLOADS = [
+export const TRANSCRIPTION_MODEL_DOWNLOADS = [
   {
+    id: "base",
     key: "model",
     fileName: "ggml-base.bin",
     label: "Whisper multilingual base model",
@@ -14,14 +16,41 @@ export const MODEL_DOWNLOADS = [
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/80da2d8bfee42b0e836fc3a9890373e5defc00a6/ggml-base.bin",
   },
   {
+    id: "small",
+    key: "model",
+    fileName: "ggml-small.bin",
+    label: "Whisper multilingual small model",
+    exactBytes: 487_601_967,
+    sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+    url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.bin",
+  },
+  {
+    id: "large-v3-turbo",
+    key: "model",
+    fileName: "ggml-large-v3-turbo.bin",
+    label: "Whisper multilingual Large-v3 Turbo model",
+    exactBytes: 1_624_555_275,
+    sha256: "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+    url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo.bin",
+  },
+];
+
+export const VAD_MODEL_DOWNLOAD =
+  {
     key: "vadModel",
     fileName: "ggml-silero-v6.2.0.bin",
     label: "Silero speech detector",
     exactBytes: 885_098,
     sha256: "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
     url: "https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v6.2.0.bin",
-  },
-];
+  };
+
+export const MODEL_DOWNLOADS = [...TRANSCRIPTION_MODEL_DOWNLOADS, VAD_MODEL_DOWNLOAD];
+
+function transcriptionModelDownload(modelId) {
+  const normalized = normalizeTranscriptionModelId(modelId);
+  return TRANSCRIPTION_MODEL_DOWNLOADS.find((download) => download.id === normalized);
+}
 
 export const EDITING_RUNTIME_DOWNLOADS = {
   "darwin-arm64": [
@@ -137,7 +166,11 @@ export function installationPlan(status) {
   const target = `${status.platform}-${status.arch}`;
   const runtimeDownloads = EDITING_RUNTIME_DOWNLOADS[target] ?? [];
   const archives = runtimeDownloads.filter((download) => download.files.some((file) => !status[file.key]?.ready));
-  const models = MODEL_DOWNLOADS.filter((download) => !status[download.key]?.ready);
+  const selectedModel = transcriptionModelDownload(status.selectedModelId);
+  const models = [
+    ...(!status.model?.ready ? [selectedModel] : []),
+    ...(!status.vadModel?.ready ? [VAD_MODEL_DOWNLOAD] : []),
+  ];
   return {
     target,
     supported: Boolean(EDITING_RUNTIME_DOWNLOADS[target]),
@@ -147,19 +180,26 @@ export function installationPlan(status) {
   };
 }
 
-export async function inspectRuntimeDependencies({ resourcesPath, userDataPath, developmentRoot = null, platform = process.platform, arch = process.arch }) {
+export async function inspectRuntimeDependencies({ resourcesPath, userDataPath, developmentRoot = null, platform = process.platform, arch = process.arch, selectedModelId = DEFAULT_TRANSCRIPTION_MODEL_ID }) {
+  const normalizedModelId = normalizeTranscriptionModelId(selectedModelId);
   const modelsDirectory = path.join(userDataPath, "models");
   const runtimeDirectory = path.join(userDataPath, "runtime", "bin");
   const developmentModelsDirectory = developmentRoot ? path.join(developmentRoot, ".models") : null;
   const developmentRuntimeDirectory = developmentRoot ? path.join(developmentRoot, "vendor", `${platform}-${arch}`, "bin") : null;
   const commandOptions = { resourcesPath, runtimeDirectory, developmentRuntimeDirectory, platform };
-  const [ffmpeg, ffprobe, whisper, model, vadModel] = await Promise.all([
+  const [ffmpeg, ffprobe, whisper, resolvedModels, vadModel] = await Promise.all([
     resolveCommand("ffmpeg", ["-version"], commandOptions),
     resolveCommand("ffprobe", ["-version"], commandOptions),
     resolveCommand("whisper-cli", ["-h"], commandOptions),
-    resolveModel(MODEL_DOWNLOADS[0], { resourcesPath, modelsDirectory, developmentModelsDirectory }),
-    resolveModel(MODEL_DOWNLOADS[1], { resourcesPath, modelsDirectory, developmentModelsDirectory }),
+    Promise.all(TRANSCRIPTION_MODEL_DOWNLOADS.map((download) => resolveModel(download, { resourcesPath, modelsDirectory, developmentModelsDirectory }))),
+    resolveModel(VAD_MODEL_DOWNLOAD, { resourcesPath, modelsDirectory, developmentModelsDirectory }),
   ]);
+  const models = TRANSCRIPTION_MODEL_OPTIONS.map((option, index) => ({
+    ...option,
+    exactBytes: TRANSCRIPTION_MODEL_DOWNLOADS[index].exactBytes,
+    ...resolvedModels[index],
+  }));
+  const model = models.find((option) => option.id === normalizedModelId);
   const status = {
     platform,
     arch,
@@ -168,6 +208,8 @@ export async function inspectRuntimeDependencies({ resourcesPath, userDataPath, 
     ffmpeg,
     ffprobe,
     whisper,
+    selectedModelId: normalizedModelId,
+    models,
     model,
     vadModel,
     coreReady: ffmpeg.ready && ffprobe.ready,

@@ -37,10 +37,30 @@ function timecodeTag(tags) {
   return entry?.[1] ?? null;
 }
 
+function rotationTag(tags) {
+  if (!tags || typeof tags !== "object") return null;
+  const entry = Object.entries(tags).find(([key]) => key.toLowerCase() === "rotate");
+  const rotation = Number(entry?.[1]);
+  return Number.isFinite(rotation) ? rotation : null;
+}
+
+export function displayDimensions(video) {
+  const width = Number(video?.width);
+  const height = Number(video?.height);
+  const sideDataRotation = video?.side_data_list
+    ?.map((item) => Number(item?.rotation))
+    .find(Number.isFinite);
+  const rotation = sideDataRotation ?? rotationTag(video?.tags) ?? 0;
+  const normalizedRotation = ((rotation % 360) + 360) % 360;
+  return normalizedRotation === 90 || normalizedRotation === 270
+    ? { width: height, height: width }
+    : { width, height };
+}
+
 export async function probeMedia(inputPath, { signal, ffprobeCommand = "ffprobe" } = {}) {
   const { stdout } = await run(ffprobeCommand, [
     "-v", "error",
-    "-show_entries", "format=duration,format_name:format_tags=timecode:stream=index,codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,sample_rate,channels,channel_layout:stream_tags=timecode",
+    "-show_entries", "format=duration,format_name:format_tags=timecode:stream=index,codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,sample_rate,channels,channel_layout:stream_tags=timecode,rotate:stream_side_data=rotation",
     "-of", "json",
     inputPath,
   ], { signal });
@@ -61,11 +81,12 @@ export async function probeMedia(inputPath, { signal, ffprobeCommand = "ffprobe"
     ?? parseMediaTimecode(streamTimecode, frameRate)
     ?? parseMediaTimecode(timecodeTag(data.format?.tags), frameRate);
   const audioChannels = Number(audio.channels) || 2;
+  const dimensions = displayDimensions(video);
 
   return {
     duration,
-    width: Number(video.width),
-    height: Number(video.height),
+    width: dimensions.width,
+    height: dimensions.height,
     frameRate,
     audioChannels,
     audioRate: Number(audio.sample_rate) || 48000,

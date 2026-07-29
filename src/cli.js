@@ -3,8 +3,9 @@
 import { access, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { detectSilences, probeMedia } from "./media.js";
+import { buildSoundIslands, detectNonVerbalSounds, nonVerbalSilenceSettings } from "./nonverbal.js";
 import { chooseProjectResolution } from "./resolution.js";
-import { addTextCuts, buildSegments } from "./segments.js";
+import { addTextCuts, buildSegments, buildSpeechRegions, transcriptionSilenceSettings } from "./segments.js";
 import { detectTextEdits } from "./text-edits.js";
 import { DEFAULT_VAD_MODEL, DEFAULT_WHISPER_MODEL, transcribeMedia } from "./transcribe.js";
 import { createTimelineDocument, timelineExportFor } from "./timeline-export.js";
@@ -20,10 +21,11 @@ Options:
   --threshold <dB>            Silence threshold (default: -35)
   --minimum-silence <seconds> Minimum silence to shorten (default: 0.7)
   --keep-pause <seconds>      Pause retained inside each cut (default: 0.18)
-  --project-resolution <size> Use source, 4k, or full-hd without prompting
+  --project-resolution <size> Use source, 4k, full-hd, vertical-4k, or vertical-full-hd
   --transcribe                Detect strong duplicate takes and false starts
+  --remove-non-verbal         Automatically cut isolated sounds without words
   --whisper-model <path>      Whisper GGML model (default: .models/ggml-base.bin)
-  --whisper-vad-model <path>  Silero VAD model used to reject non-speech
+  --whisper-vad-model <path>  Silero VAD model for isolated speech regions
   --language <code>           Spoken language or auto (default: auto)
   --text-confidence <number>  Auto-remove threshold from 0 to 1 (default: 0.9)
   --text-suggestions-only     Report text candidates without applying them
@@ -56,6 +58,7 @@ export function parseArgs(argv) {
     if (argument === "-h" || argument === "--help") options.help = true;
     else if (argument === "--no-report") options.report = false;
     else if (argument === "--transcribe") options.transcribe = true;
+    else if (argument === "--remove-non-verbal") options.removeNonVerbal = true;
     else if (argument === "--text-suggestions-only") {
       options.transcribe = true;
       options.applyTextEdits = false;
@@ -134,18 +137,40 @@ async function main() {
   const silences = await detectSilences(inputPath, options);
   let transcript = null;
   let textEdits = { candidates: [], applied: [] };
-  if (options.transcribe) {
+  let nonVerbal = { candidates: [], applied: [] };
+  const speechAnalysisEnabled = options.transcribe || options.removeNonVerbal;
+  if (speechAnalysisEnabled) {
     console.log("Transcribing locally with Whisper…");
+    const transcriptSettings = transcriptionSilenceSettings(options);
+    const transcriptSilences = transcriptSettings.minimumSilence === options.minimumSilence
+      ? silences
+      : await detectSilences(inputPath, transcriptSettings);
     transcript = await transcribeMedia(inputPath, {
+      regions: buildSpeechRegions(transcriptSilences, media.duration, {
+        minimumSpeechSeconds: options.removeNonVerbal ? 0.02 : 0.3,
+      }),
       modelPath: options.whisperModel ?? DEFAULT_WHISPER_MODEL,
       vadModelPath: options.whisperVadModel ?? DEFAULT_VAD_MODEL,
       language: options.language,
     });
-    textEdits = detectTextEdits(transcript.segments, { autoConfidence: options.textConfidence });
-    console.log(`Transcript language: ${transcript.language}; found ${textEdits.candidates.length} text candidate${textEdits.candidates.length === 1 ? "" : "s"}.`);
+    if (options.transcribe) textEdits = detectTextEdits(transcript.segments, { autoConfidence: options.textConfidence });
+    if (options.removeNonVerbal) {
+      const soundSettings = nonVerbalSilenceSettings(options);
+      const soundSilences = soundSettings.minimumSilence === transcriptSettings.minimumSilence
+        ? transcriptSilences
+        : await detectSilences(inputPath, soundSettings);
+      nonVerbal = detectNonVerbalSounds(buildSoundIslands(soundSilences, media.duration), {
+        tokens: transcript.tokens,
+        utterances: transcript.utterances,
+      });
+    }
+    console.log(`Transcript language: ${transcript.language}; found ${textEdits.candidates.length} text candidate${textEdits.candidates.length === 1 ? "" : "s"} and ${nonVerbal.candidates.length} non-word sound${nonVerbal.candidates.length === 1 ? "" : "s"}.`);
   }
 
-  const silenceSegments = buildSegments(silences, media.duration, media.frameRate, options.keepPause);
+  const silenceSegments = buildSegments([
+    ...silences,
+    ...nonVerbal.applied.map((item) => ({ start: item.start, end: item.end })),
+  ], media.duration, media.frameRate, options.keepPause);
   const appliedTextEdits = options.applyTextEdits ? textEdits.applied : [];
   const segments = addTextCuts(silenceSegments, appliedTextEdits, media.frameRate);
   if (segments.keeps.length === 0) throw new Error("The whole file was detected as silence; no timeline was created.");
@@ -174,12 +199,13 @@ async function main() {
         height: projectResolution.height,
       },
       exportFormat: options.format,
-      transcription: options.transcribe ? {
+      transcription: speechAnalysisEnabled ? {
         language: options.language,
         model: path.resolve(options.whisperModel ?? DEFAULT_WHISPER_MODEL),
         vadModel: path.resolve(options.whisperVadModel ?? DEFAULT_VAD_MODEL),
         confidenceThreshold: options.textConfidence,
         applyEdits: options.applyTextEdits,
+        removeNonVerbal: options.removeNonVerbal === true,
       } : null,
     },
     originalDurationSeconds: media.duration,
@@ -193,11 +219,12 @@ async function main() {
     transcript: transcript ? {
       language: transcript.language,
       text: transcript.text,
-      segments: transcript.segments,
+      segments: options.transcribe ? transcript.segments : [],
     } : null,
-    textEdits: options.transcribe ? {
+    textEdits: speechAnalysisEnabled ? {
       applied: appliedTextEdits,
       suggestions: textEdits.candidates.filter((item) => !appliedTextEdits.includes(item)),
+      nonVerbal: nonVerbal.candidates,
     } : null,
   };
   if (options.report) await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
@@ -207,6 +234,7 @@ async function main() {
   if (options.transcribe) {
     console.log(`Applied ${appliedTextEdits.length} high-confidence text edit${appliedTextEdits.length === 1 ? "" : "s"}; review all candidates in the JSON report.`);
   }
+  if (options.removeNonVerbal) console.log(`Applied ${nonVerbal.applied.length} isolated non-word sound cut${nonVerbal.applied.length === 1 ? "" : "s"}.`);
   console.log(`${exportTarget.shortLabel}: ${outputPath}`);
   if (options.format === "resolve") console.log(`Resolve: set the imported timeline to ${projectResolution.width}x${projectResolution.height}.`);
   if (options.report) console.log(`Report:  ${reportPath}`);
