@@ -559,7 +559,7 @@ function registerIpc() {
     return handler(event, ...args);
   });
   ipcMain.on("session:flush-complete", (event) => {
-    assertTrustedSender(event, rendererEntryUrl());
+    try { assertTrustedSender(event, rendererEntryUrl()); } catch { return; }
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window || flushApproved.has(window)) return;
     flushApproved.add(window);
