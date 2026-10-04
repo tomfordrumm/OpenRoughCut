@@ -298,7 +298,7 @@ candidates, not a new public 0.1.3 release.
 
 ### Remaining owner actions in order
 
-1. Unlock the Mac for a real Final Cut check. Import the Full HD XML into a separate test
+1. Complete the real Final Cut check (the Mac is now unlocked). Import the Full HD XML into a separate test
    library; verify no warnings, 1920×1080/30p, all 120 clips and 16:57:25 duration. Inspect
    first/middle/last cuts and transitions, listen for audio/sync, inspect Source spatial
    conform and framing, and export XML back to compare every source range and timeline offset.
@@ -316,3 +316,26 @@ candidates, not a new public 0.1.3 release.
 5. Verify Accepted responses, stapling, Gatekeeper and final installer launch. Review final
    SHA-256 files and publish the notarized DMG/ZIP, source revision and notes manually.
    Do not publish the unsigned candidate DMG containers or pre-stapling candidate ZIPs.
+
+### Unlocked GUI follow-up, October 4
+
+Final Cut launched and a separate empty Standard Gamut SDR library was created at
+`/private/tmp/openroughcut-acceptance/OpenRoughCut Full HD Audit 2026-10-04.fcpbundle`.
+No existing timeline was edited. A copy of the tested XML is available at
+`/tmp/openroughcut-acceptance/full-hd.fcpxml` for manual import into this library.
+The automated Import XML dialog did not complete: its Go to Folder field accepted the
+path through Accessibility, but Return/Escape and selecting the result repeatedly
+returned the field to `/`. Rebinding the app did not resolve this. This is an automation
+blocker, not evidence of an XML importer rejection. Import, framing and audible playback
+therefore remain unverified; the user was asked to complete this dialog manually.
+
+A real Electron path probe confirmed that `--user-data-dir=/tmp/openroughcut-acceptance/profile-probe`
+sets both `app.getPath('userData')` and `sessionData` to that isolated directory. This
+supports a safe isolated launch plan but does not prove the packaged app's launch.
+The UI tool refused access to Terminal for safety reasons, so no alternate UI injection
+was used to launch the signed candidate with arguments. Gatekeeper was not bypassed.
+The installed-candidate launch gate remains open.
+
+The existing recovery file's SHA-256 was unchanged before and after this follow-up:
+`15fdbd64c3215aa8c33af6720fdfac7bddcd79e4784fbdfe2d2d6c12a5b07ddd`.
+Website changes, the earlier standalone patched XML and `.impeccable/` remain untouched.
