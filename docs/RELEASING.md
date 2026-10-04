@@ -133,3 +133,125 @@ Full HD export, export failure, missing/restored media and Unicode paths. It doe
 Finder installation, human playback/audio perception, real file-dialog behavior or Final Cut import.
 Temporary smoke data is left at the printed path for diagnosis. FFmpeg/FFprobe in the local
 vendor directory are test prerequisites, not installer contents.
+
+## Audit record, 2026-10-04
+
+Canonical source is `/Users/tomfordrumm/Documents/VideoEditor`, branch
+`feature/macos-release-audit`. At the start both directories had identical application,
+website, lockfile and workflow bytes. `/Volumes/Code/VideoEditor` has no own `.git` and
+resolves to an unrelated empty parent repository at `/Volumes/Code`; it is not a second
+Git history. The Documents copy has the project's history from `6feab49` and more local
+runtime binaries. Neither copy was removed. Six pre-existing application/test changes
+were preserved in local snapshot commit `d61f11b`, not attributed to this audit.
+Three pre-existing website changes remain uncommitted with byte-identical diffs; the
+untracked `.impeccable` directory and earlier fixed XML remain untouched. No gitlinks,
+credentials, real media or recovery sessions were committed.
+
+### FCPXML finding
+
+The saved recovery session for the September 30 recording says `projectResolution: source`
+at `2026-09-30T16:50:13.355Z`. The original XML has both source and timeline at 3840×1080.
+The renderer defaults to `source`, saves this field through `sessionDocument`, restores it
+through `loadSessionFile`, and passes it directly into export. The exporter resolves the
+chosen size separately from asset metadata. There is no evidence that a Full HD choice
+was lost. It is not possible to prove whether the user explicitly selected Source or left
+its default. The export button now shows the resolved timeline dimensions, and source
+metadata is labelled separately.
+
+The historical screenshot says the XML **was imported with warnings**, not rejected.
+It reports `Encountered an unexpected value (format="r3")` on the compound and project
+sequences. The cause established by the saved state is a source-size timeline contrary
+to the intended Full HD output. Why this particular custom format produces Final Cut's
+warning remains an import compatibility question. No generator format/color patch was
+made, and the earlier `FFVideoFormat1080p30`/3840×1080 patch was not adopted.
+
+Current ffprobe evidence: source 3840×1080, 30/1 fps, SAR 1:1, DAR 32:9, progressive,
+BT.709 matrix/transfer/primaries, stereo 48 kHz. Re-export using `full-hd` produces source
+format 3840×1080 and named timeline format `FFVideoFormat1080p30` for both compound and
+project. All 120 ordered ref-clip attributes, source audio metadata and original media URL
+match the original export. Timeline length is `6107/6s`, 16:57:25 at 30 fps.
+The new XML passes the installed FCPXML 1.10 DTD.
+
+Local test file: `release/audit/2026-09-30-full-hd-v2.fcpxml`. It contains private source
+paths and is deliberately excluded from Git. The original export and recovery are untouched.
+The exporter adds no crop, transform, conform or color-space override. Expected Fit display
+is a 1920×540 picture with 270-pixel bars above/below in the 1920×1080 frame; this is an
+expectation from spatial conform, not an observed Final Cut result. Color management is
+left to Final Cut and source metadata. The generic probe currently does not retain color,
+field-order or pixel-aspect metadata, so HDR/anamorphic/rotated-source support needs separate
+validation before making wider support claims.
+
+### Findings and release gates
+
+| Priority | Finding / status |
+| --- | --- |
+| Blocks release | Real Full HD import, visual framing and audio playback remain unverified. Final Cut 12.3 is installed but Computer Use reported the Mac locked. Must inspect a separate test library and round-trip XML, all 120 ranges, source/compound/project sizing, ordering, timing and sound. |
+| Blocks release | Notarization, stapling and Gatekeeper acceptance intentionally not executed. Credentials/profile selection remains owner work. |
+| Blocks release | Installed-artifact launch, first-run downloads without developer tools, and replacement of an earlier version preserving user data remain unverified. No running user app was replaced or stopped. |
+| Blocks release | Minimum macOS 12 and native Intel acceptance remain unverified. Host is macOS 26.6.2 arm64. Electron 43 supports Monterey but reaches EOL January 5, 2027; plan an OS/support decision before then. |
+| Fixed | Tag push previously published unsigned releases. Workflows now separate PR checks from manual unsigned candidate builds; publication is owner-only. |
+| Fixed | Full dependency audit initially found 11 high and 1 moderate vulnerability, including Electron. Electron 43.7.7 and compatible lockfile updates produce zero current npm audit findings. `--omit=dev` is insufficient because Electron ships in the app. |
+| Fixed | Packaged code could honor a developer URL environment variable; now disabled when packaged. IPC handlers check the exact main frame and renderer URL. Context isolation, sandbox, disabled Node integration, blocked navigation/windows and bounded media tokens were already present. |
+| Fixed | Missing source during recovery was swallowed as if recovery did not exist. Now reports the missing path and restoration action without deleting the saved session. A relink UI remains desirable. |
+| Fixed | Explicit MIT notices for React/React DOM and Electron/Chromium notices were missing from the packaging configuration; added alongside the existing whisper.cpp notice. |
+| Fixed | Application tests accidentally depended on untracked website build output; now explicitly run `test/*.test.js`. Clean source install/tests/build pass. |
+| Desirable | Review product license and rights/provenance of app icons before distribution. No root product LICENSE was found; do not infer an open-source license from the name. FFmpeg downloads are GPL builds and remain outside the installer; retain upstream license/source information. This is a distribution inventory, not legal clearance. |
+| Desirable | Add a user-driven media relink workflow and test disk-full/partial export writes. File dialogs and session writes are bounded; successful IPC recovery tests do not prove every storage failure path. |
+| Can defer | In-app updater, universal binary and broad refactoring. Separate arm64/x64 packages and manual app replacement meet the current delivery model. |
+
+Automated evidence: 89 application tests pass; full npm audit reports zero vulnerabilities;
+clean `git archive` + `npm ci` + tests + Vite build passes without local dist files.
+Real Electron IPC smoke passed preview cancellation, create/analyse, save/reopen/recovery,
+Full HD export, export write failure, dialog cancellation, missing/restored media and paths
+with spaces/Cyrillic. It uses synthetic media and stubbed dialogs, not the installed artifact.
+No native Node modules are in the app payload. Inspected whisper and FFmpeg/FFprobe Mach-O
+minimum OS is 12.0, and whisper links only system frameworks/libraries. Runtime manifests
+and local bundled binaries passed SHA-256 verification for both macOS architectures.
+
+### Qipli reuse and ownership
+
+Qipli was inspected read-only: its release workflow uses a protected `release` environment,
+a temporary CI Keychain, Developer ID and App Store Connect secrets, explicit notarization
+and artifact verification. Its Sparkle pipeline is unrelated to OpenRoughCut and was not copied.
+The reusable parts are the stage separation and credential isolation, not bundle identity,
+Swift build commands, entitlements or updater configuration.
+
+`security find-identity -v -p codesigning` finds Developer ID Application for Sviatoslav
+Zhilichev, Team `3N2R5K4J63`, fingerprint `6C2AE064708B7EABC3BA88BE82616310765F23A0`.
+Certificate validity is August 26, 2026 through February 1, 2027. This certificate type is
+appropriate for direct macOS distribution of another app by the same team. Apple Development
+identities are also present but are not used for this candidate. Actual successful nested
+Developer ID signatures confirm private-key usability; merely listing identities was not
+treated as signing proof. No keys were exported, certificates changed or global Keychain ACLs modified.
+
+No notary credential variables were present in this shell and no known usable profile was
+identified. This does not prove that no profile exists in any Keychain. Owner must supply an
+existing notarytool profile name or configure credentials for this team. Qipli CI secret names
+were inspected, not secret values; their availability in an OpenRoughCut CI environment is
+not established. No Apple submission, public upload, push, merge or live infrastructure change occurred.
+
+### Draft release notes for the next version
+
+- Show the timeline dimensions before export and identify source dimensions separately.
+- Explain missing media when opening or recovering a project.
+- Restrict packaged renderer loading and IPC senders.
+- Update Electron and vulnerable build dependencies; include bundled library notices.
+- Separate local signed candidates from notarization and manual publication.
+- Preserve the earlier silence/nonverbal changes in their own commit for owner review.
+
+Do not claim Final Cut acceptance, minimum-OS support or installation/update acceptance in
+public release notes until those gates have evidence.
+
+### Official references checked during the audit
+
+- [Apple Developer ID](https://developer.apple.com/help/account/certificates/create-developer-id-certificates)
+- [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
+- [Electron signing](https://www.electronjs.org/docs/latest/tutorial/code-signing)
+- [Electron security](https://www.electronjs.org/docs/latest/tutorial/security)
+- [electron-builder 26 macOS options](https://www.electron.build/v26/docs/mac/)
+- [Final Cut spatial conform](https://support.apple.com/en-ca/guide/final-cut-pro/ver3363b44e/mac)
+- [Electron release support schedule](https://releases.electronjs.org/schedule)
+
+The installed electron-builder 26.15.3 implementation was also inspected because its default
+entitlements differ from newer documentation. The project explicitly grants only `allow-jit`
+instead of inheriting broad unsigned-memory/library-validation exceptions.
