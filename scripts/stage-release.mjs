@@ -22,10 +22,11 @@ if (targetPlatform === "win32") {
 
 const fromProjectParent = (resource) => ({
   ...resource,
-  from: resource.from.startsWith("vendor/") ? `../${resource.from}` : resource.from,
+  from: /^(vendor|build)\//.test(resource.from) ? `../${resource.from}` : resource.from,
 });
 const build = {
   ...packageDocument.build,
+  extraResources: packageDocument.build.extraResources.map(fromProjectParent),
   electronVersion: packageDocument.devDependencies.electron,
   directories: {
     ...packageDocument.build.directories,

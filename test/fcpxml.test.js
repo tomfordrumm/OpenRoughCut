@@ -48,3 +48,21 @@ test("creates sequential clips referencing exact source ranges", () => {
   assert.match(document, /name="A &amp; B — Source" ref="r4" offset="2s" start="4s" duration="6s"/);
   assert.match(document, /<sequence format="r3" duration="8s"/);
 });
+
+// A wide asset must not override the user's Full HD timeline choice.
+test("120 wide-source cuts preserve timing and audio inside a Full HD timeline", () => {
+  const media = { duration: 240, width: 3840, height: 1080,
+    frameRate: { numerator: 30, denominator: 1 }, audioChannels: 2, audioRate: 48000 };
+  const keeps = Array.from({ length: 120 }, (_, i) => ({ startFrame: i * 60, endFrame: i * 60 + 30 }));
+  const options = { inputPath: "/tmp/Тест с пробелами.mov", clipName: "Wide", projectName: "Full HD", media, keeps };
+  const source = createFcpxml(options);
+  const hd = createFcpxml({ ...options, projectResolution: { width: 1920, height: 1080 } });
+  assert.match(hd, /<format id="r1" frameDuration="1\/30s" width="3840" height="1080"\/>/);
+  assert.match(hd, /<format id="r3" name="FFVideoFormat1080p30"\/>/);
+  assert.equal((hd.match(/<sequence format="r3"/g) ?? []).length, 2);
+  assert.deepEqual(hd.match(/<ref-clip[^>]*offset=[^>]+/g), source.match(/<ref-clip[^>]*offset=[^>]+/g));
+  assert.equal((hd.match(/<ref-clip[^>]*offset=/g) ?? []).length, 120);
+  assert.match(hd, /audioChannels="2" audioRate="48000"/);
+  assert.match(hd, /%D0%A2%D0%B5%D1%81%D1%82%20/);
+  assert.doesNotMatch(hd, /adjust-crop|adjust-transform|colorSpace=/);
+});

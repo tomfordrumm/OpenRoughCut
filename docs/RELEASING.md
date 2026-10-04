@@ -33,13 +33,76 @@ npm run dist:win
 
 `dist:mac` creates DMG and ZIP artifacts. `dist:win` creates a one-click, per-user NSIS installer. When the Microsoft Visual C++ runtime is missing, the installer explains why it is needed and asks before launching the pinned Microsoft prerequisite. Each command verifies only the components actually conveyed by that installer; FFmpeg/FFprobe are obtained during first-run setup.
 
-## Automated releases
+## Candidate and publication boundary
 
-Push a version commit to `main`, then push the matching annotated tag (for example, `v0.1.3`). `.github/workflows/release.yml` validates that the tag matches `package.json`, runs the application and website tests, reconstructs the ignored native runtime from pinned checksum-verified sources, and builds each installer on its native operating system. After every target succeeds, the workflow publishes the tag as a GitHub Release with all five platform artifacts and `SHA256SUMS.txt`.
+Push and pull request run `.github/workflows/checks.yml` without signing credentials.
+The existing `release.yml` is now an explicitly dispatched **unsigned candidate** build.
+It uploads CI artifacts only. Neither workflow notarizes or publishes a GitHub release.
+Do not distribute these unsigned CI artifacts as a production download.
 
-The Apple Silicon and Intel `whisper-cli` binaries are recovered from the checksum-pinned 0.1.1 release packages because whisper.cpp does not publish standalone macOS CLI archives. The Windows runtime and Visual C++ prerequisite are fetched from their pinned upstream URLs. `scripts/prepare-release-runtime.mjs` verifies the archive and every extracted binary before packaging.
+Use Node 24.17.0 and `npm ci` with the committed lockfile. To reconstruct the native runtime:
 
-Build and sign macOS artifacts on macOS, including separate arm64 and x64 releases or a deliberately assembled universal runtime. Build and sign the Windows installer on Windows. Configure Apple notarization and Windows code-signing identities in the release environment; do not publish unsigned installers as production downloads.
+```sh
+node scripts/prepare-release-runtime.mjs darwin arm64
+node scripts/prepare-release-runtime.mjs darwin x64
+```
+
+This downloads checksum-pinned archives, including the previous 0.1.1 macOS release,
+and validates each extracted executable. Preserve those upstream archives for long-term
+reproducibility. This is reproducible dependency selection, not a claim of bit-identical
+signed output: signing timestamps and disk image metadata vary.
+
+For a local Developer ID candidate, from a committed application revision:
+
+```sh
+npm ci
+export CSC_NAME='Developer ID Application: YOUR NAME (YOURTEAMID)'
+scripts/macos-candidate.sh arm64
+scripts/macos-candidate.sh x64
+```
+
+These commands run tests, build, verify runtime inputs, package DMG/ZIP, require signing,
+verify nested signatures and dynamic libraries, record revision and checksums. They explicitly
+disable notarization and publishing. The packager signs Electron frameworks/helpers and the
+additional `Contents/Resources/runtime/bin/whisper-cli`. The app and helpers use the project's
+`allow-jit` entitlement; they do not copy Qipli's entitlements. No native Node addons are shipped.
+
+Minimum declared macOS is 12.0, matching the inspected Electron and whisper-cli binaries.
+Separate arm64/x64 packages are supported; clean-machine acceptance on both architectures
+and the minimum OS is still required. First-run internet access is required for FFmpeg/FFprobe
+and the selected transcription model. The installer intentionally does not contain those tools.
+
+## Owner-only notarization and publication
+
+Do not run the following until the candidate passes the acceptance matrix below.
+Create or select a notarytool Keychain credential profile for the same team. Credentials
+are entered by the owner and never placed in repository files. An existing CI deployment
+would need its own protected environment and scoped secrets; Qipli repository secrets do
+not automatically become available to this repository. No key export is needed for local signing.
+
+```sh
+export ORC_NOTARY_PROFILE='your-existing-profile'
+export CSC_NAME='Developer ID Application: YOUR NAME (YOURTEAMID)'
+scripts/notarize-macos.sh --submit release/mac-arm64/OpenRoughCut.app release/notarized-arm64
+scripts/notarize-macos.sh --submit release/mac/OpenRoughCut.app release/notarized-x64
+```
+
+The separate script submits an app ZIP, requires Accepted status, staples and assesses
+the app, rebuilds the distribution ZIP, builds/signs/submits/staples a DMG, assesses it,
+and writes final checksums. A failed stage stops publication. Inspect notary JSON and
+retrieve Apple's log with `xcrun notarytool log ID --keychain-profile "$ORC_NOTARY_PROFILE"`
+when a submission is rejected. Never upload the pre-stapling candidate ZIP by mistake.
+
+Mount the final DMG, install into a test account, launch through Finder under Gatekeeper,
+complete first-run setup without Homebrew or developer PATH, then test replacement of
+the previous app while preserving `~/Library/Application Support/OpenRoughCut` and projects.
+Do not remove quarantine to make this check pass. Record actual results for each architecture.
+
+Choose a new version before public release; 0.1.3 already exists. Update package.json and
+lockfile together, add reviewed release notes, rebuild and repeat acceptance. The owner
+then manually uploads only the final notarized DMG/ZIP, checksums, revision and notes to
+a draft release and publishes it after review. No publication command is run by these scripts.
+There is no in-app updater; replacement of the .app is the update mechanism.
 
 ## Pre-publish checklist
 

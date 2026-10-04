@@ -12,26 +12,11 @@ const STANDARD_DIMENSIONS = new Set([
   "5120x2160", "5120x2560", "5120x2700",
 ]);
 
-export const PROJECT_RESOLUTIONS = {
-  source: null,
-  "4k": { width: 3840, height: 2160, label: "UHD 4K" },
-  "full-hd": { width: 1920, height: 1080, label: "Full HD" },
-  "vertical-4k": { width: 2160, height: 3840, label: "Vertical UHD 4K" },
-  "vertical-full-hd": { width: 1080, height: 1920, label: "Vertical Full HD" },
-};
+export { PROJECT_RESOLUTIONS, resolveProjectResolution } from "./project-resolution.js";
+import { resolveProjectResolution } from "./project-resolution.js";
 
 export function isStandardResolution({ width, height }) {
   return STANDARD_DIMENSIONS.has(`${width}x${height}`) || STANDARD_DIMENSIONS.has(`${height}x${width}`);
-}
-
-export function resolveProjectResolution(media, choice) {
-  if (!Object.hasOwn(PROJECT_RESOLUTIONS, choice)) {
-    throw new Error("--project-resolution must be source, 4k, full-hd, vertical-4k, or vertical-full-hd.");
-  }
-  const resolution = PROJECT_RESOLUTIONS[choice];
-  return resolution
-    ? { width: resolution.width, height: resolution.height, choice }
-    : { width: media.width, height: media.height, choice: "source" };
 }
 
 export async function chooseProjectResolution(media, requestedChoice) {

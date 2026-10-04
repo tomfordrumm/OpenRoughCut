@@ -38,3 +38,16 @@ test("Windows stages its installer prerequisite without parent-directory travers
   assert.match(installerScript, /\$\{PROJECT_DIR\}\\installer-prerequisites\\vc_redist\.x64\.exe/);
   assert.doesNotMatch(installerScript, /PROJECT_DIR[^\r\n]*\.\.\/vendor/);
 });
+
+test("candidate configuration cannot notarize or publish on a tag push", async () => {
+  assert.equal(packageDocument.build.mac.notarize, false);
+  assert.equal(packageDocument.build.mac.hardenedRuntime, true);
+  assert.ok(packageDocument.build.mac.binaries.includes("Resources/runtime/bin/whisper-cli"));
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /gh release create|contents: write|\n  push:/);
+  const candidate = await readFile(new URL('../scripts/macos-candidate.sh', import.meta.url), 'utf8');
+  assert.match(candidate, /--publish never/);
+  assert.match(candidate, /forceCodeSigning=true/);
+  assert.doesNotMatch(candidate, /notarytool submit/);
+});

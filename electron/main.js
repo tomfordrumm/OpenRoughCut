@@ -1,3 +1,4 @@
+import { assertTrustedSender } from "../src/ipc-policy.js";
 import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from "electron";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
@@ -20,7 +21,7 @@ import { analysisFingerprint, SESSION_VERSION } from "../src/session.js";
 import { inspectRuntimeDependencies, installMissingDependencies } from "../src/runtime-dependencies.js";
 import { DEFAULT_TRANSCRIPTION_MODEL_ID, isTranscriptionModelId } from "../src/transcription-models.js";
 
-const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+const devServerUrl = app.isPackaged ? null : process.env.VITE_DEV_SERVER_URL;
 const mediaSources = new Map();
 const mediaTokens = new Map();
 const MAX_SESSION_BYTES = 50 * 1024 * 1024;
@@ -505,7 +506,12 @@ async function loadSessionFile(filePath, { recovery = false } = {}) {
   if (![1, SESSION_VERSION].includes(session.version) || !session.sourcePath || !session.settings) {
     throw new Error("This is not a supported OpenRoughCut session.");
   }
-  await stat(session.sourcePath);
+  try {
+    await stat(session.sourcePath);
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error(`Source media is missing: ${session.sourcePath}. Restore it to this location before reopening the project.`);
+    throw error;
+  }
   const runtime = await currentRuntimeStatus();
   if (!runtime.ffprobe.ready) throw new Error("FFprobe is required before a session can be opened.");
   const media = await probeMedia(session.sourcePath, { ffprobeCommand: runtime.ffprobe.command });
@@ -543,8 +549,17 @@ async function loadSessionFile(filePath, { recovery = false } = {}) {
   };
 }
 
+function rendererEntryUrl() {
+  return devServerUrl ? new URL(devServerUrl).href : pathToFileURL(path.join(import.meta.dirname, "../dist/index.html")).href;
+}
+
 function registerIpc() {
+  const handle = (channel, handler) => ipcMain.handle(channel, (event, ...args) => {
+    assertTrustedSender(event, rendererEntryUrl());
+    return handler(event, ...args);
+  });
   ipcMain.on("session:flush-complete", (event) => {
+    assertTrustedSender(event, rendererEntryUrl());
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window || flushApproved.has(window)) return;
     flushApproved.add(window);
@@ -553,9 +568,9 @@ function registerIpc() {
     window.close();
   });
 
-  ipcMain.handle("runtime:status", async (_event, request) => refreshRuntimeStatus(request?.transcriptionModelId ?? selectedTranscriptionModelId));
+  handle("runtime:status", async (_event, request) => refreshRuntimeStatus(request?.transcriptionModelId ?? selectedTranscriptionModelId));
 
-  ipcMain.handle("runtime:install", async (event, request) => runOperation(event, "setup", async (signal) => {
+  handle("runtime:install", async (event, request) => runOperation(event, "setup", async (signal) => {
     const modelId = assertTranscriptionModelId(request?.transcriptionModelId ?? selectedTranscriptionModelId);
     const before = await refreshRuntimeStatus(modelId);
     sendProgress(event.sender, "setup", "running", "Preparing OpenRoughCut…", 0);
@@ -574,16 +589,16 @@ function registerIpc() {
     return after;
   }));
 
-  ipcMain.handle("operation:cancel", (event) => cancelOperation(event));
+  handle("operation:cancel", (event) => cancelOperation(event));
 
-  ipcMain.handle("diagnostics:show-logs", async () => {
+  handle("diagnostics:show-logs", async () => {
     if (!appLogger.filePath) throw new Error("The diagnostic log is not available yet.");
     appLogger.info("diagnostics.log.revealed");
     shell.showItemInFolder(appLogger.filePath);
     return { path: appLogger.filePath };
   });
 
-  ipcMain.handle("video:choose", async () => {
+  handle("video:choose", async () => {
     let sourcePath = null;
     try {
       const selected = await dialog.showOpenDialog({
@@ -616,18 +631,18 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle("video:prepare-preview", async (event, request) => {
+  handle("video:prepare-preview", async (event, request) => {
     const source = sourceForId(request?.sourceId);
     const runtime = await currentRuntimeStatus();
     if (!runtime.ffmpeg.ready) throw new Error("FFmpeg is not available. Complete setup before building a preview.");
     return runOperation(event, "preview", (signal) => preparePreview(source, event.sender, { signal, ffmpegCommand: runtime.ffmpeg.command }));
   });
 
-  ipcMain.handle("storage:list-proxies", async (_event, request) => listProxyCache(request?.sourceId));
+  handle("storage:list-proxies", async (_event, request) => listProxyCache(request?.sourceId));
 
-  ipcMain.handle("storage:delete-proxies", async (_event, request) => deleteProxyCacheEntries(request?.ids));
+  handle("storage:delete-proxies", async (_event, request) => deleteProxyCacheEntries(request?.ids));
 
-  ipcMain.handle("video:analyze", async (event, request) => runOperation(event, "analysis", async (signal) => {
+  handle("video:analyze", async (event, request) => runOperation(event, "analysis", async (signal) => {
     const settings = assertSettings(request.settings);
     const options = assertAnalysisOptions(request);
     const source = sourceForId(request.sourceId);
@@ -709,7 +724,7 @@ function registerIpc() {
     }
   }));
 
-  ipcMain.handle("session:save", async (_event, session) => {
+  handle("session:save", async (_event, session) => {
     const source = sourceForId(session.sourceId);
     let filePath = source.sessionPath;
     if (!filePath) {
@@ -725,14 +740,14 @@ function registerIpc() {
     return { path: filePath, savedAt: document.savedAt };
   });
 
-  ipcMain.handle("session:autosave", async (_event, session) => {
+  handle("session:autosave", async (_event, session) => {
     const source = sourceForId(session.sourceId);
     const document = sessionDocument(session, source, source.sessionPath);
     await writeRecovery(document);
     return { path: autosavePath(), savedAt: document.savedAt };
   });
 
-  ipcMain.handle("session:close", async (_event, request) => {
+  handle("session:close", async (_event, request) => {
     const source = sourceForId(request?.sourceId);
     mediaSources.delete(request.sourceId);
     mediaTokens.delete(source.mediaToken);
@@ -740,7 +755,7 @@ function registerIpc() {
     return { closed: true };
   });
 
-  ipcMain.handle("session:recover", async () => {
+  handle("session:recover", async () => {
     try {
       return await loadSessionFile(autosavePath(), { recovery: true });
     } catch (error) {
@@ -749,13 +764,13 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle("session:load", async () => {
+  handle("session:load", async () => {
     const selected = await dialog.showOpenDialog({ title: "Open OpenRoughCut project", properties: ["openFile"], filters: [{ name: "OpenRoughCut Project", extensions: ["roughcut", "json"] }] });
     if (selected.canceled || !selected.filePaths[0]) return null;
     return loadSessionFile(selected.filePaths[0]);
   });
 
-  ipcMain.handle("project:export", async (event, request) => {
+  handle("project:export", async (event, request) => {
     const source = sourceForId(request.sourceId);
     const parsed = path.parse(source.sourcePath);
     const exportFormat = assertExportFormat(request.exportFormat);
@@ -803,9 +818,7 @@ function registerIpc() {
 }
 
 async function createWindow() {
-  const entryUrl = devServerUrl
-    ? new URL(devServerUrl).href
-    : pathToFileURL(path.join(import.meta.dirname, "../dist/index.html")).href;
+  const entryUrl = rendererEntryUrl();
   const window = new BrowserWindow({
     width: 1440,
     height: 940,
