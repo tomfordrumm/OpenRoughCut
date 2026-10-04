@@ -15,6 +15,7 @@ xcrun stapler staple "$app"
 scripts/verify-macos.sh "$app" --gatekeeper
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
 arch=$(lipo -archs "$app/Contents/MacOS/OpenRoughCut")
+[[ "$arch" != x86_64 ]] || arch=x64
 base="OpenRoughCut-$version-mac-$arch"
 ditto -c -k --keepParent "$app" "$out/$base.zip"
 mkdir "$out/dmg-root"

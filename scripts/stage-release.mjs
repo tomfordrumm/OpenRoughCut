@@ -22,7 +22,7 @@ if (targetPlatform === "win32") {
 
 const fromProjectParent = (resource) => ({
   ...resource,
-  from: /^(vendor|build)\//.test(resource.from) ? `../${resource.from}` : resource.from,
+  from: /^(vendor|build|node_modules)\//.test(resource.from) ? `../${resource.from}` : resource.from,
 });
 const build = {
   ...packageDocument.build,

@@ -113,3 +113,23 @@ There is no in-app updater; replacement of the .app is the update mechanism.
 - Smoke-test first launch, model approval/cancellation, recovery after forced quit, Save versus Save As, playback, analysis, timeline edits, proxy deletion/rebuild, and every export target.
 - Test a large source and a path containing spaces and non-ASCII characters on each supported platform.
 - Sign, notarize where applicable, and scan the final installer artifacts.
+
+## Export reproduction and automated desktop smoke
+
+Use a copy of the saved `.roughcut` or recovery session. The following preserves its
+retained ranges and uses the actual exporter with an explicit timeline choice:
+
+```sh
+FFPROBE="$PWD/vendor/darwin-arm64/bin/ffprobe" node scripts/export-session.mjs \
+  /path/to/project.roughcut /path/to/new-full-hd.fcpxml full-hd
+npm run app:build
+npx --no-install electron scripts/smoke-electron.mjs
+```
+
+The exporter refuses an existing output path. The smoke script generates synthetic media,
+uses an isolated temporary user-data/cache directory and stubs file dialogs. It checks real
+Electron IPC for project creation, analysis, preview cancellation, save/open/recovery,
+Full HD export, export failure, missing/restored media and Unicode paths. It does not prove
+Finder installation, human playback/audio perception, real file-dialog behavior or Final Cut import.
+Temporary smoke data is left at the printed path for diagnosis. FFmpeg/FFprobe in the local
+vendor directory are test prerequisites, not installer contents.
