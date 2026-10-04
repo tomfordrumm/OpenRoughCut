@@ -15,4 +15,3 @@ export function resolveProjectResolution(media, choice) {
     ? { width: resolution.width, height: resolution.height, choice }
     : { width: media.width, height: media.height, choice: "source" };
 }
-

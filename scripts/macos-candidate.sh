@@ -12,7 +12,7 @@ npm test
 npm run app:build
 node scripts/verify-runtime.mjs darwin "$arch"
 node scripts/stage-release.mjs darwin
-npx --no-install electron-builder --projectDir .release-stage --mac --"$arch" --publish never -c.mac.notarize=false -c.forceCodeSigning=true
+CSC_NAME="${CSC_NAME#Developer ID Application: }" npx --no-install electron-builder --projectDir .release-stage --mac --"$arch" --publish never -c.mac.notarize=false -c.forceCodeSigning=true
 app="release/mac${arch/arm64/-arm64}/OpenRoughCut.app"
 if [[ "$arch" == x64 ]]; then app='release/mac/OpenRoughCut.app'; fi
 scripts/verify-macos.sh "$app"
