@@ -61,6 +61,12 @@ scripts/macos-candidate.sh arm64
 scripts/macos-candidate.sh x64
 ```
 
+The candidate directory is printed at completion. By default it is
+`~/Library/Caches/OpenRoughCut-release/<revision>`. Set `ORC_RELEASE_DIR` to that printed
+absolute path before the notarization commands below. Use an unsynced local directory;
+File Provider added FinderInfo to bundles under Documents and caused a real signing failure.
+Do not move a raw .app into a synced directory before signing verification.
+
 These commands run tests, build, verify runtime inputs, package DMG/ZIP, require signing,
 verify nested signatures and dynamic libraries, record revision and checksums. They explicitly
 disable notarization and publishing. The packager signs Electron frameworks/helpers and the
@@ -83,8 +89,8 @@ not automatically become available to this repository. No key export is needed f
 ```sh
 export ORC_NOTARY_PROFILE='your-existing-profile'
 export CSC_NAME='Developer ID Application: YOUR NAME (YOURTEAMID)'
-scripts/notarize-macos.sh --submit release/mac-arm64/OpenRoughCut.app release/notarized-arm64
-scripts/notarize-macos.sh --submit release/mac/OpenRoughCut.app release/notarized-x64
+scripts/notarize-macos.sh --submit "$ORC_RELEASE_DIR/mac-arm64/OpenRoughCut.app" "$ORC_RELEASE_DIR/notarized-arm64"
+scripts/notarize-macos.sh --submit "$ORC_RELEASE_DIR/mac/OpenRoughCut.app" "$ORC_RELEASE_DIR/notarized-x64"
 ```
 
 The separate script submits an app ZIP, requires Accepted status, staples and assesses

@@ -30,7 +30,7 @@ const build = {
   electronVersion: packageDocument.devDependencies.electron,
   directories: {
     ...packageDocument.build.directories,
-    output: "../release",
+    output: process.env.ORC_RELEASE_DIR ? path.resolve(process.env.ORC_RELEASE_DIR) : "../release",
     buildResources: "../build",
   },
   mac: {
