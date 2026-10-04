@@ -261,3 +261,58 @@ public release notes until those gates have evidence.
 The installed electron-builder 26.15.3 implementation was also inspected because its default
 entitlements differ from newer documentation. The project explicitly grants only `allow-jit`
 instead of inheriting broad unsigned-memory/library-validation exceptions.
+
+### Completed candidate evidence
+
+Application/pipeline revision: `8755bfdfc08170cbab8b12c7e30900afb586cbfa`.
+Later documentation-only commits do not change these binaries.
+Artifacts: `~/Library/Caches/OpenRoughCut-release/8755bfdfc081/`.
+
+| Stage | Observed result |
+| --- | --- |
+| Clean dependency install, 89 tests, renderer build | Passed from a fresh archive of this revision |
+| Runtime reconstruction | Both macOS runtimes downloaded into the fresh source tree from pinned upstream release archives; archive/executable hashes verified |
+| Electron IPC smoke | Passed again at this revision with isolated user data |
+| arm64 and x64 packaging | Both candidate commands exited successfully; DMG and ZIP produced for each architecture |
+| App signatures | Developer ID, team `3N2R5K4J63`, secure timestamp, hardened runtime, only `allow-jit` app entitlement; strict/deep validation passed |
+| Nested code and linking | All 16 Mach-O files per architecture verified, same team, no developer-machine library paths |
+| Bundled payload | No `.node` modules, embedded node_modules, private session or secret files in ASAR; no ffmpeg/ffprobe executables in installer |
+| DMG and ZIP verification | Both DMGs passed hdiutil verification, mounted read-only, contained valid signed apps and were detached. Extracted ZIP apps passed strict/deep codesign. All four recorded SHA-256 checksums match |
+| Signed native tool | arm64 bundled whisper-cli `--help` exited 0 |
+| DMG outer signature | Candidate DMG containers are unsigned; owner notarization script builds/signs the final containers after app stapling |
+| Gatekeeper | arm64 app assessment rejected with `source=Unnotarized Developer ID`, expected before notarization; never bypassed |
+| Notarization / stapling | Not submitted / not performed |
+| Installed app launch / upgrade | Not performed; GUI was locked. IPC smoke is not this acceptance gate |
+| Final Cut import / playback | Not performed; GUI was locked. XML and range comparisons are not this acceptance gate |
+
+Qipli environment secret **metadata** was checked with `gh secret list --repo tomfordrumm/Qipli --env release`.
+All expected Developer ID P12/password, team, identity and notary key/issuer/ID names are
+present. Values and operational validity were not read or exercised. Additional local
+Apple Development certificates expire August 7, 2027 for team `97869YN5V9` and August 26,
+2027 for team `3N2R5K4J63`. They are development identities, not direct-distribution substitutes.
+
+Checksums and full application revision are alongside the artifacts in `SHA256SUMS-arm64.txt`,
+`SHA256SUMS-x64.txt`, `REVISION-arm64.txt` and `REVISION-x64.txt`. Local diagnostic logs and
+Full HD XML are under the ignored `release/audit/` directory. These artifacts remain
+candidates, not a new public 0.1.3 release.
+
+### Remaining owner actions in order
+
+1. Unlock the Mac for a real Final Cut check. Import the Full HD XML into a separate test
+   library; verify no warnings, 1920×1080/30p, all 120 clips and 16:57:25 duration. Inspect
+   first/middle/last cuts and transitions, listen for audio/sync, inspect Source spatial
+   conform and framing, and export XML back to compare every source range and timeline offset.
+2. Test the signed app from each architecture's DMG in a test account without developer
+   tools. Exercise first-run setup, preview/analysis/transcription, save/reopen/recovery,
+   cancellation and export. On appropriate hardware, test macOS 12 and native Intel.
+   Install an earlier release first and replace only the app, checking sessions, settings,
+   downloaded models and media remain intact. Do not reset the user's actual profile.
+3. Confirm icon/product licensing, choose a new public version, update version/lockfile and
+   release notes, commit locally and rebuild both candidates. The existing version 0.1.3
+   must not be silently replaced by different bytes.
+4. Select/configure an Apple notarization Keychain profile for team `3N2R5K4J63`, set
+   `ORC_NOTARY_PROFILE`, `CSC_NAME` and the printed `ORC_RELEASE_DIR`, then run the two
+   `notarize-macos.sh --submit` commands documented above. This is the first external upload.
+5. Verify Accepted responses, stapling, Gatekeeper and final installer launch. Review final
+   SHA-256 files and publish the notarized DMG/ZIP, source revision and notes manually.
+   Do not publish the unsigned candidate DMG containers or pre-stapling candidate ZIPs.
