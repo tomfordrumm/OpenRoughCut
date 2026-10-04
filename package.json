@@ -78,10 +78,10 @@
       ],
       "notarize": false,
       "minimumSystemVersion": "12.0",
-      "entitlements": "../build/entitlements.mac.plist",
-      "entitlementsInherit": "../build/entitlements.mac.plist",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "binaries": [
-        "Resources/runtime/bin/whisper-cli"
+        "Contents/Resources/runtime/bin/whisper-cli"
       ]
     },
     "win": {

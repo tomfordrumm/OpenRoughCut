@@ -42,7 +42,7 @@ test("Windows stages its installer prerequisite without parent-directory travers
 test("candidate configuration cannot notarize or publish on a tag push", async () => {
   assert.equal(packageDocument.build.mac.notarize, false);
   assert.equal(packageDocument.build.mac.hardenedRuntime, true);
-  assert.ok(packageDocument.build.mac.binaries.includes("Resources/runtime/bin/whisper-cli"));
+  assert.ok(packageDocument.build.mac.binaries.includes("Contents/Resources/runtime/bin/whisper-cli"));
   const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
   assert.doesNotMatch(workflow, /gh release create|contents: write|\n  push:/);

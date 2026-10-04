@@ -35,6 +35,8 @@ const build = {
   },
   mac: {
     ...packageDocument.build.mac,
+    entitlements: path.join(projectRoot, packageDocument.build.mac.entitlements),
+    entitlementsInherit: path.join(projectRoot, packageDocument.build.mac.entitlementsInherit),
     extraResources: packageDocument.build.mac.extraResources.map(fromProjectParent),
   },
   win: {
