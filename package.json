@@ -19,7 +19,7 @@
     "dist:mac:arm64": "npm run app:build && node scripts/verify-runtime.mjs darwin arm64 && node scripts/stage-release.mjs darwin && electron-builder --projectDir .release-stage --mac --arm64",
     "dist:mac:x64": "npm run app:build && node scripts/verify-runtime.mjs darwin x64 && node scripts/stage-release.mjs darwin && electron-builder --projectDir .release-stage --mac --x64",
     "dist:win": "npm run app:build && node scripts/verify-runtime.mjs win32 x64 && node scripts/stage-release.mjs win32 && electron-builder --projectDir .release-stage --win --x64",
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   },
   "main": "electron/main.js",
   "devDependencies": {
