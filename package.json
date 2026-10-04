@@ -82,6 +82,9 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "binaries": [
         "Contents/Resources/runtime/bin/whisper-cli"
+      ],
+      "signIgnore": [
+        "\\.pak$"
       ]
     },
     "win": {
