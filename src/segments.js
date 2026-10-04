@@ -85,14 +85,47 @@ function mergeRemovals(removals) {
   return merged;
 }
 
+function bridgeTextRemovalToExistingRemovals(removal, existingRemovals, maximumGapFrames) {
+  const bridged = { ...removal };
+  for (const existing of existingRemovals) {
+    const gapBefore = bridged.startFrame - existing.endFrame;
+    if (gapBefore > 0 && gapBefore <= maximumGapFrames) bridged.startFrame = existing.endFrame;
+
+    const gapAfter = existing.startFrame - bridged.endFrame;
+    if (gapAfter > 0 && gapAfter <= maximumGapFrames) bridged.endFrame = existing.startFrame;
+  }
+  return bridged;
+}
+
+function bridgeFrameAdjacentSilences(ranges) {
+  const bridged = [];
+  for (const range of ranges) {
+    const previous = bridged.at(-1);
+    const gapFrames = previous ? range.startFrame - previous.endFrame : Number.POSITIVE_INFINITY;
+    if (previous && gapFrames >= 0 && gapFrames <= 1) {
+      previous.endFrame = Math.max(previous.endFrame, range.endFrame);
+    } else {
+      bridged.push({ ...range });
+    }
+  }
+  return bridged;
+}
+
 export function buildSegments(silences, durationSeconds, frameRate, keepPauseSeconds) {
   const durationFrames = secondsToFrames(durationSeconds, frameRate);
   const keepPauseFrames = Math.max(0, secondsToFrames(keepPauseSeconds, frameRate));
 
-  const removals = silences
+  const sourceRanges = silences
     .map((silence) => {
       const start = Math.max(0, secondsToFrames(silence.start, frameRate));
       const end = Math.min(durationFrames, secondsToFrames(silence.end, frameRate));
+      return { startFrame: start, endFrame: end };
+    })
+    .filter((range) => range.endFrame > range.startFrame)
+    .sort((first, second) => first.startFrame - second.startFrame || first.endFrame - second.endFrame);
+
+  const removals = bridgeFrameAdjacentSilences(sourceRanges)
+    .map(({ startFrame: start, endFrame: end }) => {
       const atStart = start === 0;
       const atEnd = end === durationFrames;
       const before = atStart ? 0 : atEnd ? keepPauseFrames : Math.floor(keepPauseFrames / 2);
@@ -108,13 +141,15 @@ export function buildSegments(silences, durationSeconds, frameRate, keepPauseSec
   return { durationFrames, keeps, removals: mergedRemovals };
 }
 
-export function addTextCuts(segments, cuts, frameRate) {
+export function addTextCuts(segments, cuts, frameRate, { maximumGapFrames = 0 } = {}) {
+  const bridgeFrames = Math.max(0, Math.floor(Number(maximumGapFrames) || 0));
   const textRemovals = cuts
     .map((cut) => ({
       startFrame: Math.max(0, secondsToFrames(cut.start, frameRate)),
       endFrame: Math.min(segments.durationFrames, secondsToFrames(cut.end, frameRate)),
     }))
-    .filter((cut) => cut.endFrame > cut.startFrame);
+    .filter((cut) => cut.endFrame > cut.startFrame)
+    .map((cut) => bridgeTextRemovalToExistingRemovals(cut, segments.removals, bridgeFrames));
   const removals = mergeRemovals([...segments.removals, ...textRemovals]);
   return {
     durationFrames: segments.durationFrames,

@@ -691,7 +691,9 @@ function registerIpc() {
         if (options.includeTranscript) {
           sendProgress(event.sender, "analysis", "running", "Finding false starts and repeated takes…");
           textEdits = detectTextEdits(transcription.segments, { autoConfidence: options.textConfidence });
-          segments = addTextCuts(segments, textEdits.applied, media.frameRate);
+          segments = addTextCuts(segments, textEdits.applied, media.frameRate, {
+            maximumGapFrames: Math.ceil(secondsToFrames(settings.keepPause, media.frameRate) / 2),
+          });
         }
         const appliedText = new Set(textEdits.applied);
         textCandidates = [

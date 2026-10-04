@@ -58,6 +58,31 @@ test("recognizes humming and hesitation sounds but keeps real short words", () =
   assert.equal(word.candidates.length, 0);
 });
 
+test("recognizes shivers, short breaths, and starred sound annotations", () => {
+  assert.equal(isFillerSound("Бррр"), true);
+  assert.equal(isFillerSound("brr"), true);
+  assert.equal(isFillerSound("пах"), true);
+
+  const island = { soundStart: 4, soundEnd: 4.4, start: 2, end: 7 };
+  const annotation = detectNonVerbalSounds([island], {
+    tokens: [{ start: 4.05, end: 4.3, text: " звук", probability: 0.95 }],
+    utterances: [{ start: 4, end: 4.4, text: "*звук*" }],
+  });
+  assert.equal(annotation.applied.length, 1);
+});
+
+test("removes an exact filler token while protecting a neighboring word", () => {
+  const island = { soundStart: 4, soundEnd: 4.4, start: 2, end: 4.6 };
+  const result = detectNonVerbalSounds([island], {
+    tokens: [
+      { start: 4.05, end: 4.3, text: " Ммм", probability: 0.92 },
+      { start: 4.48, end: 4.7, text: " И", probability: 0.98 },
+    ],
+  });
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].removedText, "Ммм");
+});
+
 test("protects words close to a sound boundary and only suggests low-confidence text", () => {
   const island = { soundStart: 4, soundEnd: 4.4, start: 2, end: 7 };
   const protectedWord = detectNonVerbalSounds([island], {

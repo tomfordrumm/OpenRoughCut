@@ -1,6 +1,6 @@
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
-const NON_VERBAL_ANNOTATION = /^\s*[[(<].+[\])>]\s*$/u;
-const FILLER_SOUND = /^(?:[\u043C\u044D\u044B]+|\u044D+\u043C+|[\u0430\u0443]{2,}|h+m+|m{1,}|u+h+|u+m+)$/iu;
+const NON_VERBAL_ANNOTATION = /^\s*(?:[[(<].+[\])>]|\*[^*]+\*)\s*$/u;
+const FILLER_SOUND = /^(?:[\u043C\u044D\u044B]+|\u044D+\u043C+|[\u0430\u0443]{2,}|\u0431+\u0440+|\u043F\u0430\u0445|h+m+|m{1,}|u+h+|u+m+|b+r+)$/iu;
 
 export const NON_VERBAL_SILENCE_SECONDS = 0.18;
 
@@ -103,8 +103,10 @@ export function detectNonVerbalSounds(soundIslands, {
   for (const island of soundIslands ?? []) {
     const nearbyTokens = tokens.filter((item) => WORD_CHARACTER.test(String(item?.text ?? ""))
       && overlaps(item, island.soundStart - wordGuardSeconds, island.soundEnd + wordGuardSeconds));
+    const soundTokens = nearbyTokens.filter((item) => overlaps(item, island.soundStart, island.soundEnd));
     const nearbyUtterances = utterances.filter((item) => overlaps(item, island.soundStart, island.soundEnd));
     const recognizedText = nearbyTokens.map((item) => String(item.text).trim()).filter(Boolean).join("").trim();
+    const soundText = soundTokens.map((item) => String(item.text).trim()).filter(Boolean).join("").trim();
     const annotationText = nearbyUtterances
       .map((item) => String(item.text ?? "").trim())
       .filter((text) => NON_VERBAL_ANNOTATION.test(text));
@@ -113,8 +115,10 @@ export function detectNonVerbalSounds(soundIslands, {
       candidates.push(candidate(island, 0.99, "No spoken words detected", true));
       continue;
     }
-    if (isFillerSound(recognizedText) || annotationText.length === nearbyUtterances.length && annotationText.length > 0) {
-      candidates.push(candidate(island, 0.97, recognizedText || annotationText.join(" "), true));
+    if (isFillerSound(soundText)
+      || isFillerSound(recognizedText)
+      || annotationText.length === nearbyUtterances.length && annotationText.length > 0) {
+      candidates.push(candidate(island, 0.97, soundText || recognizedText || annotationText.join(" "), true));
       continue;
     }
 

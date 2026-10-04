@@ -31,6 +31,24 @@ test("does not create a cut when a requested pause fills the detected range", ()
   assert.deepEqual(result.keeps, [{ startFrame: 0, endFrame: 125 }]);
 });
 
+test("bridges silence ranges separated by no more than one source frame", () => {
+  const result = buildSegments([
+    { start: 0, end: 2 },
+    { start: 2.0001, end: 4 },
+  ], 5, fps25, 0.2);
+  assert.deepEqual(result.removals, [{ startFrame: 0, endFrame: 95 }]);
+  assert.deepEqual(result.keeps, [{ startFrame: 95, endFrame: 125 }]);
+});
+
+test("preserves a sound longer than one source frame between silence ranges", () => {
+  const result = buildSegments([
+    { start: 0, end: 2 },
+    { start: 2.08, end: 4 },
+  ], 5, fps25, 0.2);
+  assert.equal(result.removals.length, 2);
+  assert.deepEqual(result.keeps[0], { startFrame: 45, endFrame: 54 });
+});
+
 test("merges transcript cuts with silence cuts before rebuilding keep segments", () => {
   const silenceSegments = buildSegments([{ start: 4, end: 6 }], 10, fps25, 0.2);
   const result = addTextCuts(silenceSegments, [{ start: 1, end: 5 }], fps25);
@@ -39,6 +57,40 @@ test("merges transcript cuts with silence cuts before rebuilding keep segments",
     { startFrame: 0, endFrame: 25 },
     { startFrame: 147, endFrame: 250 },
   ]);
+});
+
+test("bridges tiny retained-pause gaps beside transcript cuts", () => {
+  const segments = {
+    durationFrames: 250,
+    removals: [
+      { startFrame: 0, endFrame: 100 },
+      { startFrame: 149, endFrame: 200 },
+    ],
+    keeps: [
+      { startFrame: 100, endFrame: 149 },
+      { startFrame: 200, endFrame: 250 },
+    ],
+  };
+  const result = addTextCuts(segments, [{ start: 4.12, end: 5.88 }], fps25, { maximumGapFrames: 3 });
+  assert.deepEqual(result.removals, [{ startFrame: 0, endFrame: 200 }]);
+  assert.deepEqual(result.keeps, [{ startFrame: 200, endFrame: 250 }]);
+});
+
+test("does not bridge a short sound between existing silence cuts", () => {
+  const segments = {
+    durationFrames: 250,
+    removals: [
+      { startFrame: 0, endFrame: 100 },
+      { startFrame: 103, endFrame: 200 },
+    ],
+    keeps: [
+      { startFrame: 100, endFrame: 103 },
+      { startFrame: 200, endFrame: 250 },
+    ],
+  };
+  const result = addTextCuts(segments, [], fps25, { maximumGapFrames: 3 });
+  assert.deepEqual(result.removals, segments.removals);
+  assert.deepEqual(result.keeps, segments.keeps);
 });
 
 test("builds padded speech regions from the inverse of detected silence", () => {

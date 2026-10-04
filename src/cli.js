@@ -5,7 +5,7 @@ import path from "node:path";
 import { detectSilences, probeMedia } from "./media.js";
 import { buildSoundIslands, detectNonVerbalSounds, nonVerbalSilenceSettings } from "./nonverbal.js";
 import { chooseProjectResolution } from "./resolution.js";
-import { addTextCuts, buildSegments, buildSpeechRegions, transcriptionSilenceSettings } from "./segments.js";
+import { addTextCuts, buildSegments, buildSpeechRegions, secondsToFrames, transcriptionSilenceSettings } from "./segments.js";
 import { detectTextEdits } from "./text-edits.js";
 import { DEFAULT_VAD_MODEL, DEFAULT_WHISPER_MODEL, transcribeMedia } from "./transcribe.js";
 import { createTimelineDocument, timelineExportFor } from "./timeline-export.js";
@@ -172,7 +172,9 @@ async function main() {
     ...nonVerbal.applied.map((item) => ({ start: item.start, end: item.end })),
   ], media.duration, media.frameRate, options.keepPause);
   const appliedTextEdits = options.applyTextEdits ? textEdits.applied : [];
-  const segments = addTextCuts(silenceSegments, appliedTextEdits, media.frameRate);
+  const segments = addTextCuts(silenceSegments, appliedTextEdits, media.frameRate, {
+    maximumGapFrames: Math.ceil(secondsToFrames(options.keepPause, media.frameRate) / 2),
+  });
   if (segments.keeps.length === 0) throw new Error("The whole file was detected as silence; no timeline was created.");
 
   const document = createTimelineDocument(options.format, {
