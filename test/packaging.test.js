@@ -40,6 +40,9 @@ test("Windows stages its installer prerequisite without parent-directory travers
 });
 
 test("candidate configuration cannot notarize or publish on a tag push", async () => {
+  for (const [name, command] of Object.entries(packageDocument.scripts)) {
+    if (name === "dist" || name.startsWith("dist:")) assert.match(command, /--publish never/);
+  }
   assert.equal(packageDocument.build.mac.notarize, false);
   assert.equal(packageDocument.build.mac.hardenedRuntime, true);
   assert.ok(packageDocument.build.mac.binaries.includes("Contents/Resources/runtime/bin/whisper-cli"));
