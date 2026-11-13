@@ -43,8 +43,8 @@ Do not distribute these unsigned CI artifacts as a production download.
 Use Node 24.17.0 and `npm ci` with the committed lockfile. To reconstruct the native runtime:
 
 ```sh
-node scripts/prepare-release-runtime.mjs darwin arm64
-node scripts/prepare-release-runtime.mjs darwin x64
+node apps/desktop/scripts/prepare-release-runtime.mjs darwin arm64
+node apps/desktop/scripts/prepare-release-runtime.mjs darwin x64
 ```
 
 This downloads checksum-pinned archives, including the previous 0.1.1 macOS release,
@@ -57,8 +57,8 @@ For a local Developer ID candidate, from a committed application revision:
 ```sh
 npm ci
 export CSC_NAME='Developer ID Application: YOUR NAME (YOURTEAMID)'
-scripts/macos-candidate.sh arm64
-scripts/macos-candidate.sh x64
+apps/desktop/scripts/macos-candidate.sh arm64
+apps/desktop/scripts/macos-candidate.sh x64
 ```
 
 The candidate directory is printed at completion. By default it is
@@ -89,8 +89,8 @@ not automatically become available to this repository. No key export is needed f
 ```sh
 export ORC_NOTARY_PROFILE='your-existing-profile'
 export CSC_NAME='Developer ID Application: YOUR NAME (YOURTEAMID)'
-scripts/notarize-macos.sh --submit "$ORC_RELEASE_DIR/mac-arm64/OpenRoughCut.app" "$ORC_RELEASE_DIR/notarized-arm64"
-scripts/notarize-macos.sh --submit "$ORC_RELEASE_DIR/mac/OpenRoughCut.app" "$ORC_RELEASE_DIR/notarized-x64"
+apps/desktop/scripts/notarize-macos.sh --submit "$ORC_RELEASE_DIR/mac-arm64/OpenRoughCut.app" "$ORC_RELEASE_DIR/notarized-arm64"
+apps/desktop/scripts/notarize-macos.sh --submit "$ORC_RELEASE_DIR/mac/OpenRoughCut.app" "$ORC_RELEASE_DIR/notarized-x64"
 ```
 
 The separate script submits an app ZIP, requires Accepted status, staples and assesses
@@ -129,7 +129,7 @@ retained ranges and uses the actual exporter with an explicit timeline choice:
 FFPROBE="$PWD/vendor/darwin-arm64/bin/ffprobe" node scripts/export-session.mjs \
   /path/to/project.roughcut /path/to/new-full-hd.fcpxml full-hd
 npm run app:build
-npx --no-install electron scripts/smoke-electron.mjs
+npx --no-install electron apps/desktop/scripts/smoke-electron.mjs
 ```
 
 The exporter refuses an existing output path. The smoke script generates synthetic media,

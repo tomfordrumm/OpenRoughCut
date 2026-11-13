@@ -1,0 +1,17 @@
+{
+  "name": "@openroughcut/core",
+  "version": "0.1.3",
+  "private": true,
+  "type": "module",
+  "description": "OpenRoughCut analysis and edit pipeline: silences, transcription, take detection, edit plans, timeline export and rendering. No UI, no console, no Electron.",
+  "exports": {
+    ".": "./src/index.js",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
