@@ -96,6 +96,7 @@ export function applyDecisions(reviewPacket, decisions) {
  * @param options.media  probe result, when the caller already has one
  * @param options.tools  { ffmpeg, ffprobe, whisper } commands (default: from PATH)
  * @param options.models  { whisper, vad } model paths; required for speech analysis
+ * @param options.whisper  { prompt, threads }: vocabulary hint and CPU threads for whisper-cli
  * @param options.speech  { transcript, textEdits } replacing Whisper and take detection (see applyDecisions)
  * @param options.dependencies  replaces I/O steps in tests
  */
@@ -105,6 +106,7 @@ export async function analyze(inputPath, settingsInput, {
   media: knownMedia = null,
   tools = {},
   models = {},
+  whisper = {},
   speech = null,
   createId = randomUUID,
   dependencies = {},
@@ -144,6 +146,8 @@ export async function analyze(inputPath, settingsInput, {
         modelPath: models.whisper,
         vadModelPath: models.vad,
         language: settings.language,
+        prompt: whisper.prompt ?? "",
+        threads: whisper.threads ?? null,
         onProgress: ({ completed, total }) => {
           const percent = total ? Math.min(99, Math.round(completed / total * 100)) : null;
           progress("transcribe", `Transcribing speech locally with Whisper · ${percent ?? 0}%`, percent, { completed, total });

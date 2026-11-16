@@ -32,6 +32,22 @@ test("transcribes isolated region files with VAD in one Whisper invocation", () 
   assert.deepEqual(args.slice(-2), ["/tmp/region-1.wav", "/tmp/region-2.wav"]);
 });
 
+test("passes a vocabulary prompt and thread count to whisper-cli", () => {
+  const args = whisperArguments({
+    modelPath: "/models/small.bin",
+    audioPaths: ["/tmp/region-1.wav"],
+    vadModelPath: "/models/vad.bin",
+    language: "ru",
+    prompt: "  Claude Code,\n нейросеть ",
+    threads: 6,
+  });
+  const at = args.indexOf("--prompt");
+  assert.equal(args[at + 1], "Claude Code, нейросеть");
+  assert.equal(args[args.indexOf("-t") + 1], "6");
+  assert.equal(args.at(-1), "/tmp/region-1.wav");
+  assert.ok(!whisperArguments({ modelPath: "m", audioPaths: ["a"], vadModelPath: "v", language: "ru", prompt: " " }).includes("--prompt"));
+});
+
 test("maps a multi-segment transcript back to its complete source region", () => {
   const result = parseRegionTranscription({
     result: { language: "ru" },

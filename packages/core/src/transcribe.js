@@ -70,7 +70,7 @@ export function parseRegionTiming(data, region) {
   return { utterances, tokens };
 }
 
-export function whisperArguments({ modelPath, audioPaths, vadModelPath, language, useGpu = true }) {
+export function whisperArguments({ modelPath, audioPaths, vadModelPath, language, useGpu = true, prompt = "", threads = null }) {
   const args = [
     "-m", modelPath,
     "-l", language,
@@ -82,6 +82,11 @@ export function whisperArguments({ modelPath, audioPaths, vadModelPath, language
     "-np",
     ...audioPaths,
   ];
+  // A short initial prompt with the speaker's vocabulary steers spelling of
+  // names and terms; whisper-cli applies it at the start of every region.
+  const text = String(prompt ?? "").replace(/\s+/g, " ").trim();
+  if (text) args.unshift("--prompt", text);
+  if (Number.isInteger(threads) && threads > 0) args.unshift("-t", String(threads));
   if (!useGpu) args.unshift("-ng");
   return args;
 }
@@ -125,6 +130,8 @@ export async function transcribeMedia(inputPath, {
   vadModelPath,
   language = "auto",
   useGpu = true,
+  prompt = "",
+  threads = null,
   signal,
   ffmpegCommand = "ffmpeg",
   whisperCommand = "whisper-cli",
@@ -197,6 +204,8 @@ export async function transcribeMedia(inputPath, {
           vadModelPath: resolvedVadModel,
           language: targetLanguage,
           useGpu: gpuEnabled,
+          prompt,
+          threads,
         }), { signal });
         await Promise.all(targetJobs.map((job) => access(`${job.regionPath}.json`)));
       };
