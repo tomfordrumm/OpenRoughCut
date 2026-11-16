@@ -111,3 +111,45 @@ test("candidates carry the kept take's range so the review can play and choose i
   assert.equal(candidates.length, 1);
   assert.deepEqual(candidates[0].keptRanges, [{ start: segments[2].start, end: segments[2].end }]);
 });
+
+test("English sentences that share only their first word are not retakes", () => {
+  const segments = [
+    { start: 0, end: 3, text: "The microphone records clear audio." },
+    { start: 4, end: 7, text: "The export supports Final Cut Pro." },
+  ];
+  assert.equal(restartStrength(...buildTakeUnits(segments)), 0);
+  assert.deepEqual(detectLastTakeEdits(segments).candidates, []);
+});
+
+test("a full sentence sharing one content word with the next is not cut", () => {
+  const segments = speech(["Нейросети пишут код.", "Нейросети рисуют."]);
+  assert.deepEqual(detectLastTakeEdits(segments).applied, []);
+  // A short fragment followed by a longer attempt still is.
+  const fragment = speech(["Нейросети пишут…", "Нейросети пишут код быстрее человека."]);
+  assert.equal(detectLastTakeEdits(fragment).applied.length, 1);
+});
+
+test("a restart inside a segment is not cut when word times overlap", () => {
+  const text = "Сейчас я покажу. Сейчас я покажу результат.";
+  const times = [[0, 0.5], [0.5, 0.8], [0.8, 1.7], [1.5, 2], [2, 2.2], [2.2, 2.7], [2.7, 3.5]];
+  const words = [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((w, i) => ({ startChar: w.index, endChar: w.index + w[0].length, start: times[i][0], end: times[i][1] }));
+  const segment = { start: 0, end: 4, text, words };
+  assert.equal(buildTakeUnits([segment]).length, 1);
+  assert.deepEqual(detectLastTakeEdits([segment]).applied, []);
+  // With clean word times the same restart is cut exactly at the boundary.
+  const clean = { ...segment, words: words.map((w, i) => (i === 2 ? { ...w, end: 1.5 } : w)) };
+  const [cut] = detectLastTakeEdits([clean]).applied;
+  assert.deepEqual([cut.start, cut.end], [0, 1.5]);
+});
+
+test("a cut whose bounds overlap the kept speech next to it stays a suggestion", () => {
+  const segments = [
+    { start: 0, end: 2.2, text: "Открываем редактор." },
+    { start: 2, end: 5, text: "Открываем редактор с записью." },
+  ];
+  const { candidates, applied } = detectLastTakeEdits(segments);
+  assert.equal(applied.length, 0);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].canApply, false);
+  assert.match(candidates[0].reviewNote, /overlap/);
+});

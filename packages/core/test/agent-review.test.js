@@ -148,3 +148,28 @@ test("the source fingerprint tells apart files that differ only past the first b
     assert.throws(() => assertSameSource({ input: { ...a, durationSeconds: 10 } }, b, 10), /different recording/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("keeping one of two overlapping candidates keeps its units in the video", () => {
+  const takes = [
+    { start: 0, end: 2, text: "Открываем редактор." },
+    { start: 3, end: 5, text: "Сохраняем проект." },
+    { start: 6, end: 8, text: "Открываем редактор с записью." },
+    { start: 9, end: 11, text: "Сохраняем проект на диске." },
+  ];
+  const textEdits = detectLastTakeEdits(takes);
+  const review = buildReviewPacket({
+    inputPath: "/video.mov", media, transcript: { language: "ru", segments: takes, tokens: [], utterances: takes },
+    textEdits, applied: textEdits.applied, reviewPath: "/video.review.json", outputPath: "/video.fcpxml",
+    settings: { duplicateMode: "last-take", textConfidence: 0.9 },
+  });
+  const [c1, c2] = review.candidates;
+  assert.deepEqual([c1.units, c2.units], [["u1", "u2"], ["u2"]]);
+  // Prefer the earlier take of the second line: keep c2 and cut its later take.
+  const edits = applyAgentDecisions(review, decide({ keep: ["c2"], cut: [{ units: ["u4"], reason: "earlier take is better" }] }));
+  assert.deepEqual(edits.applied.map((c) => [c.start, c.end]), [[0, 2], [9, 11]]);
+  assert.deepEqual(edits.summary.agentDecisions.trimmed, [{ id: "c1", restored: ["u2"], units: ["u1"] }]);
+  // Applying a suggestion over a unit that a kept candidate restores is a contradiction.
+  const conflicting = structuredClone(review);
+  conflicting.candidates[1].applied = false;
+  assert.throws(() => applyAgentDecisions(conflicting, decide({ keep: ["c1"], remove: ["c2"] })), /c2 would remove u2, which `keep` c1 restores/);
+});

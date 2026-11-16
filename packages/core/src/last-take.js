@@ -39,6 +39,10 @@ const FUNCTION_WORDS = new Set(`
   я ты мы вы он она оно они меня мне нас нам вас вам его её ее их ему ей им
   был была было были быть есть будет не ни
   например условно получается поэтому потому значит кстати собственно честно
+  the a an and or but so to of in on at for with from by as into about than then
+  is are was were be been being am do does did have has had will would can could should
+  it its this that these those there here i you we they he she me my your our their his her
+  not no just very also too what which who when where how if
 `.split(/\s+/).filter(Boolean));
 
 const RECORDING_COMMAND = /(?:^|[^\p{L}])(?:погнали|заново|сначала|стоп|дубль|ещ[её]\s+раз|давай\s+ещ[её])(?=$|[^\p{L}])/iu;
@@ -90,7 +94,13 @@ export function buildTakeUnits(segments) {
     const timing = new Map(savedWordTiming(segment).map((w) => [w.startChar, w]));
     // Mid-segment cuts need measured word times; otherwise keep the segment whole.
     const restarts = internalRestartOffsets(tokens);
-    const splits = restarts.filter((k) => timing.has(tokens[k].startChar) && timing.has(tokens[k - 1].startChar));
+    // A split is exact only when the abandoned words end before the restart
+    // begins; overlapping word times leave the boundary ambiguous, so the
+    // segment stays whole rather than losing part of the kept attempt.
+    const splits = restarts.filter((k) => {
+      const before = timing.get(tokens[k - 1].startChar), after = timing.get(tokens[k].startChar);
+      return Boolean(before && after && before.end <= after.start);
+    });
     // Judge an untimed segment's quality by its last attempt, not its abandoned opening.
     const lastAttemptText = restarts.length ? text.slice(tokens[restarts.at(-1)].startChar) : null;
     const bounds = [0, ...splits, tokens.length];
@@ -136,7 +146,9 @@ export function restartStrength(earlier, later) {
   const shared = earlierContent.filter((s) => laterContent.has(s)).length;
   // An abandoned attempt followed by speech reusing its key words is a restart.
   if (UNFINISHED.test(earlier.text) && shared >= 2) return 2;
-  if (sameOpening || sameFirstTwo || (sameFirstContent && (a[0].stem === b[0].stem || shared >= 2 || a.length <= 4))) return 2;
+  // One shared content word is a restart only for a short fragment followed by
+  // a longer attempt; a full sentence needs more shared wording to be cut.
+  if (sameOpening || sameFirstTwo || (sameFirstContent && (shared >= 2 || (a.length <= 4 && a.length < b.length)))) return 2;
   if (shared >= 3 || (earlierContent.length >= 2 && shared === earlierContent.length && a.length <= 6)) return 1;
   return 0;
 }
@@ -190,22 +202,29 @@ export function detectLastTakeEdits(segments, options = {}) {
       else runs.push([k]);
     }
     for (const run of runs) {
+      const start = units[run[0]].start, end = units[run.at(-1)].end;
+      // Speech kept on either side must not overlap the cut; if word or
+      // segment times overlap, the boundary is ambiguous and stays a suggestion.
+      const neighbours = [units[run[0] - 1], units[run.at(-1) + 1]].filter(Boolean);
+      const ambiguous = neighbours.some((u) => Math.min(u.end, end) - Math.max(u.start, start) > 0.001);
+      const runNotes = ambiguous ? [...notes, "Word times overlap the kept speech next to this cut; check the boundary before applying it."] : notes;
+      const runConfidence = ambiguous ? Math.min(confidence, 0.6) : confidence;
       candidates.push({
-        start: units[run[0]].start,
-        end: units[run.at(-1)].end,
+        start,
+        end,
         reason: units[link.earlier].tokens.length < units[link.later].tokens.length ? "false-start" : "repeated-take",
-        confidence: Number(confidence.toFixed(2)),
+        confidence: Number(runConfidence.toFixed(2)),
         similarity: link.strength === 2 ? 1 : 0.5,
         removedText: run.map((k) => units[k].text).join(" "),
         keptText: units[final].text,
         keptRanges: [{ start: units[final].start, end: units[final].end }],
         method: LAST_TAKE_MODE,
-        canApply: true,
-        autoEligible: confidence >= settings.autoConfidence,
+        canApply: !ambiguous,
+        autoEligible: !ambiguous && runConfidence >= settings.autoConfidence,
         groupId: `take:${units[final].segmentIndex}:${units[final].startChar}`,
         attemptId: `${units[run[0]].segmentIndex}:${units[run[0]].startChar}`,
         winnerId: `${units[final].segmentIndex}:${units[final].startChar}`,
-        reviewNote: notes.join(" ") || (link.strength === 2 ? "Restarts the same opening; the later attempt is kept." : "Shares the key words of a later attempt; the later attempt is kept."),
+        reviewNote: runNotes.join(" ") || (link.strength === 2 ? "Restarts the same opening; the later attempt is kept." : "Shares the key words of a later attempt; the later attempt is kept."),
       });
     }
   }

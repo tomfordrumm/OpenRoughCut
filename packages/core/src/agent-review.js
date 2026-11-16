@@ -209,7 +209,44 @@ export function applyAgentDecisions(packet, decisions) {
 
   const keptIds = new Set(keep.map((e) => e.id));
   const removedIds = new Set(remove.map((e) => e.id));
-  const appliedCandidates = packet.candidates.filter((c) => (c.applied && !keptIds.has(c.id)) || removedIds.has(c.id));
+  // Interleaved takes (A1, B1, A2, B2) give overlapping candidates: one removes
+  // A1+B1, another B1. Keeping the second must keep B1 in the video, so every
+  // other cut is trimmed around the units a kept candidate restores.
+  const restored = new Map();
+  for (const entry of keep) for (const unit of byId.get(entry.id).view.units) if (!restored.has(unit)) restored.set(unit, entry.id);
+  const trimmed = [];
+  const appliedEntries = [];
+  packet.candidates.forEach((view, i) => {
+    const source = packet.candidateSources[i];
+    if (!((view.applied && !keptIds.has(view.id)) || removedIds.has(view.id))) return;
+    const clash = view.units.filter((u) => restored.has(u));
+    if (!clash.length) { appliedEntries.push({ view, source }); return; }
+    const keepers = [...new Set(clash.map((u) => restored.get(u)))].join(", ");
+    if (removedIds.has(view.id)) fail(`${view.id} would remove ${clash.join(", ")}, which \`keep\` ${keepers} restores; drop one of the two decisions.`);
+    if (view.timed === false || source?.canApply === false) {
+      fail(`keeping ${keepers} restores ${clash.join(", ")}, but ${view.id} also removes it and has no exact word timing to cut around it; also \`keep\` ${view.id} and \`cut\` the units that should go.`);
+    }
+    const rest = view.units.filter((u) => !restored.has(u)).map((u) => unitIndex.get(u)).sort((a, b) => a - b);
+    const firstIndex = unitIndex.get(view.units[0]), lastIndex = unitIndex.get(view.units.at(-1));
+    const runs = [];
+    for (const index of rest) {
+      if (runs.at(-1)?.at(-1) === index - 1) runs.at(-1).push(index);
+      else runs.push([index]);
+    }
+    for (const run of runs) {
+      const first = packet.units[run[0]], last = packet.units[run.at(-1)];
+      const ids = run.map((k) => packet.units[k].id);
+      // Outer edges keep the detector's exact bounds; inner edges are unit bounds.
+      const start = run[0] === firstIndex ? source.start : first.start;
+      const end = run.at(-1) === lastIndex ? source.end : last.end;
+      appliedEntries.push({
+        view: { ...view, units: ids, start: round(start), end: round(end) },
+        source: { ...source, start, end, removedText: run.map((k) => packet.units[k].text).join(" "), reviewNote: [source?.reviewNote, `Trimmed around ${clash.join(", ")}, kept by ${keepers}.`].filter(Boolean).join(" ") },
+      });
+    }
+    trimmed.push({ id: view.id, restored: clash, units: rest.map((k) => packet.units[k].id) });
+  });
+  const appliedCandidates = appliedEntries.map((entry) => entry.view);
   // Packets written before keptUnits existed only carry keptUnit.
   const keptOf = (c) => (Array.isArray(c.keptUnits) ? c.keptUnits : c.keptUnit ? [c.keptUnit] : []);
 
@@ -262,19 +299,16 @@ export function applyAgentDecisions(packet, decisions) {
     };
   });
 
-  const sources = packet.candidates.map((c, i) => packet.candidateSources[i]);
-  const applied = [
-    ...packet.candidates.flatMap((c, i) => (appliedCandidates.includes(c) ? [sources[i]] : [])),
-    ...agentCuts,
-  ];
+  const applied = [...appliedEntries.map((entry) => entry.source), ...agentCuts].sort((a, b) => a.start - b.start || a.end - b.end);
   return {
-    candidates: [...sources, ...agentCuts],
+    candidates: [...packet.candidateSources, ...agentCuts],
     applied,
     summary: {
       reviewPolicy: packet.reviewPolicy ?? null,
       agentDecisions: {
         kept: keep,
         removed: remove,
+        trimmed,
         cut: (decisions.cut ?? []).map((entry) => ({ units: entry.units, reason: typeof entry.reason === "string" ? entry.reason : null })),
         notes: typeof decisions.notes === "string" ? decisions.notes : null,
       },
