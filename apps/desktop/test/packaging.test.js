@@ -7,9 +7,9 @@ const installerScript = await readFile(new URL("../build/installer.nsh", import.
 const releaseStagingScript = await readFile(new URL("../scripts/stage-release.mjs", import.meta.url), "utf8");
 const cliPackage = JSON.parse(await readFile(new URL("../../../packages/cli/package.json", import.meta.url), "utf8"));
 
-test("release identity is OpenRoughCut 0.1.3", () => {
+test("release identity is OpenRoughCut 0.1.4", () => {
   assert.equal(packageDocument.name, "openroughcut");
-  assert.equal(packageDocument.version, "0.1.3");
+  assert.equal(packageDocument.version, "0.1.4");
   assert.equal(cliPackage.bin.openroughcut, "./src/cli.js");
   assert.equal(packageDocument.build.appId, "com.openroughcut.editor");
   assert.equal(packageDocument.build.productName, "OpenRoughCut");

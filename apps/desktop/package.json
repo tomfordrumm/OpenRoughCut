@@ -1,6 +1,6 @@
 {
   "name": "openroughcut",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "author": "OpenRoughCut",
@@ -22,7 +22,7 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@openroughcut/core": "0.1.3"
+    "@openroughcut/core": "0.1.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "6.0.3",
