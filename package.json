@@ -1,118 +1,37 @@
 {
-  "name": "openroughcut",
+  "name": "openroughcut-workspace",
   "version": "0.1.3",
   "private": true,
   "type": "module",
   "author": "OpenRoughCut",
   "description": "Create silence-cut editable timelines for Final Cut Pro, Premiere Pro, and DaVinci Resolve.",
-  "bin": {
-    "openroughcut": "./src/cli.js"
-  },
+  "workspaces": [
+    "packages/core",
+    "packages/cli",
+    "apps/desktop"
+  ],
   "scripts": {
-    "start": "node ./src/cli.js",
-    "app": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
-    "app:build": "vite build",
-    "app:preview": "electron .",
-    "smoke:runtime-download": "node scripts/smoke-runtime-download.mjs",
-    "dist": "npm run app:build && node scripts/verify-runtime.mjs && node scripts/stage-release.mjs && electron-builder --projectDir .release-stage",
-    "dist:mac": "npm run app:build && node scripts/verify-runtime.mjs darwin arm64 && node scripts/verify-runtime.mjs darwin x64 && node scripts/stage-release.mjs darwin && electron-builder --projectDir .release-stage --mac --arm64 --x64",
-    "dist:mac:arm64": "npm run app:build && node scripts/verify-runtime.mjs darwin arm64 && node scripts/stage-release.mjs darwin && electron-builder --projectDir .release-stage --mac --arm64",
-    "dist:mac:x64": "npm run app:build && node scripts/verify-runtime.mjs darwin x64 && node scripts/stage-release.mjs darwin && electron-builder --projectDir .release-stage --mac --x64",
-    "dist:win": "npm run app:build && node scripts/verify-runtime.mjs win32 x64 && node scripts/stage-release.mjs win32 && electron-builder --projectDir .release-stage --win --x64",
-    "test": "node --test"
-  },
-  "main": "electron/main.js",
-  "devDependencies": {
-    "@vitejs/plugin-react": "6.0.3",
-    "concurrently": "10.0.3",
-    "cross-env": "10.1.0",
-    "electron": "43.1.1",
-    "electron-builder": "26.15.3",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
-    "vite": "8.1.5",
-    "wait-on": "9.0.10"
+    "start": "node ./packages/cli/src/cli.js",
+    "cli": "node ./packages/cli/src/cli.js",
+    "app": "npm run app -w apps/desktop",
+    "app:build": "npm run app:build -w apps/desktop",
+    "app:preview": "npm run app:preview -w apps/desktop",
+    "smoke:runtime-download": "npm run smoke:runtime-download -w apps/desktop",
+    "dist": "npm run dist -w apps/desktop",
+    "dist:mac": "npm run dist:mac -w apps/desktop",
+    "dist:mac:arm64": "npm run dist:mac:arm64 -w apps/desktop",
+    "dist:mac:x64": "npm run dist:mac:x64 -w apps/desktop",
+    "dist:win": "npm run dist:win -w apps/desktop",
+    "test": "node --test packages/core/test/*.test.js packages/cli/test/*.test.js apps/desktop/test/*.test.js test/*.test.js"
   },
   "engines": {
     "node": ">=20.19"
   },
   "overrides": {
     "shell-quote": "1.10.0",
-    "brace-expansion@^1.1.7": "1.1.17",
-    "brace-expansion@^2.0.1": "2.1.3",
-    "brace-expansion@^5.0.5": "5.0.8",
+    "brace-expansion@^1.1.7": "1.1.21",
+    "brace-expansion@^2.0.1": "2.1.7",
+    "brace-expansion@^5.0.5": "5.0.12",
     "tar": "7.5.22"
-  },
-  "build": {
-    "appId": "com.openroughcut.editor",
-    "productName": "OpenRoughCut",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
-    "asar": true,
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "src/**/*",
-      "package.json"
-    ],
-    "mac": {
-      "category": "public.app-category.video",
-      "hardenedRuntime": true,
-      "icon": "build/icon.png",
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "extraResources": [
-        {
-          "from": "vendor/darwin-${arch}/bin/whisper-cli",
-          "to": "runtime/bin/whisper-cli"
-        },
-        {
-          "from": "vendor/darwin-${arch}/licenses/whisper.cpp-mit.txt",
-          "to": "runtime/licenses/whisper.cpp-mit.txt"
-        }
-      ]
-    },
-    "win": {
-      "icon": "build/icon.ico",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "extraResources": [
-        {
-          "from": "vendor/win32-${arch}/bin",
-          "to": "runtime/bin",
-          "filter": [
-            "whisper-cli.exe",
-            "whisper.dll",
-            "ggml.dll",
-            "ggml-base.dll",
-            "ggml-cpu-*.dll"
-          ]
-        },
-        {
-          "from": "vendor/win32-${arch}/licenses/whisper.cpp-mit.txt",
-          "to": "runtime/licenses/whisper.cpp-mit.txt"
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": false,
-      "include": "build/installer.nsh",
-      "createDesktopShortcut": "always",
-      "createStartMenuShortcut": true,
-      "runAfterFinish": true
-    }
   }
 }

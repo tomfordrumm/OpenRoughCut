@@ -70,7 +70,8 @@ const waveform = [52, 68, 84, 46, 72, 94, 56, 78, 62, 38, 24, 16, 8, 6, 10, 7, 5
 
 export default function Home() {
   return (
-    <main>
+    <main id="content">
+      <a className="skip-link" href="#top">Skip to content</a>
       <nav className="nav-shell" aria-label="Main navigation">
         <a className="brand" href="#top" aria-label="OpenRoughCut home">
           <span className="brand-mark">ORC</span>
@@ -84,6 +85,14 @@ export default function Home() {
         <a className="nav-github" href={githubUrl} target="_blank" rel="noreferrer">
           GitHub <span aria-hidden="true">↗</span>
         </a>
+        <details className="mobile-nav">
+          <summary>Menu <span aria-hidden="true">+</span></summary>
+          <div className="mobile-nav-panel">
+            <a href="#features">Features</a>
+            <a href="#download">Download</a>
+            <a href="#open-source">Open source</a>
+          </div>
+        </details>
       </nav>
 
       <section className="hero section-shell" id="top">
@@ -136,7 +145,7 @@ export default function Home() {
             </div>
             <div className="editor-footer">
               <span><i className="status-dot" /> 14 suggested cuts</span>
-              <button type="button">Export timeline <b>↗</b></button>
+              <span className="editor-export">Export timeline <b>↗</b></span>
             </div>
           </div>
           <div className="saved-pill"><strong>08:16</strong><span>silence removed</span></div>

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.10">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p30" frameDuration="1/30s" fieldOrder="progressive" width="3840" height="1080" paspH="1" paspV="1" colorSpace="1-1-1 (Rec. 709)"/>
+    <format id="r3" name="FFVideoFormat1080p30" frameDuration="1/30s" fieldOrder="progressive" width="3840" height="1080" paspH="1" paspV="1" colorSpace="1-1-1 (Rec. 709)"/>
+    <asset id="r2" name="2026-09-30 17-08-05.mov" start="0s" duration="20957/10s" hasVideo="1" hasAudio="1" format="r1" audioSources="1" audioChannels="2" audioRate="48000">
+      <media-rep kind="original-media" src="file:///Users/tomfordrumm/Movies/2026-09-30%2017-08-05.mov"/>
+    </asset>
+    <media id="r4" name="2026-09-30 17-08-05 — Source">
+      <sequence format="r3" duration="20957/10s" tcStart="0s" tcFormat="NDF">
+        <spine>
+          <asset-clip name="2026-09-30 17-08-05.mov" ref="r2" offset="0s" start="0s" duration="20957/10s" audioRole="dialogue"/>
+        </spine>
+      </sequence>
+    </media>
+  </resources>
+  <event name="OpenRoughCut">
+    <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" start="0s" duration="20957/10s"/>
+    <project name="2026-09-30 17-08-05 — Rough Cut">
+      <sequence format="r3" duration="6107/6s" tcStart="0s" tcFormat="NDF">
+        <spine>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="0s" start="0s" duration="7/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="7/5s" start="71/30s" duration="5/2s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="39/10s" start="34/5s" duration="11/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="61/10s" start="41/3s" duration="67/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="25/3s" start="19s" duration="137/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="262/15s" start="716/15s" duration="7/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="109/6s" start="182/3s" duration="11/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="189/10s" start="944/15s" duration="7/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="581/30s" start="377/5s" duration="13/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="659/30s" start="239/3s" duration="8/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="45/2s" start="1219/15s" duration="49/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="323/10s" start="379/3s" duration="7/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="33s" start="639/5s" duration="167/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="662/15s" start="2176/15s" duration="91/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="283/6s" start="1619/10s" duration="59/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="796/15s" start="339/2s" duration="253/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="123/2s" start="921/5s" duration="4/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1853/30s" start="933/5s" duration="17/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="187/3s" start="2819/15s" duration="89/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2137/30s" start="3052/15s" duration="7/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1079/15s" start="6217/30s" duration="4/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1099/15s" start="1267/6s" duration="14/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1169/15s" start="1108/5s" duration="33/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1268/15s" start="7043/30s" duration="163/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="477/5s" start="1615/6s" duration="139/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="314/3s" start="2791/10s" duration="4/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1582/15s" start="4336/15s" duration="64/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1774/15s" start="4609/15s" duration="11/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1829/15s" start="4673/15s" duration="47/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="247/2s" start="4712/15s" duration="13/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="624/5s" start="1613/5s" duration="5/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="3769/30s" start="3243/10s" duration="29/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1957/15s" start="9901/30s" duration="137/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="865/6s" start="3479/10s" duration="353/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2339/15s" start="12529/30s" duration="469/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="5147/30s" start="2603/6s" duration="439/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1205/6s" start="4709/10s" duration="593/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1103/5s" start="1495/3s" duration="41/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2247/10s" start="3061/6s" duration="49/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1148/5s" start="15559/30s" duration="8s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1188/5s" start="16147/30s" duration="233/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="3797/15s" start="1672/3s" duration="13/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="7607/30s" start="2794/5s" duration="41/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="7853/30s" start="17269/30s" duration="103/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="4081/15s" start="17767/30s" duration="7/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="4088/15s" start="1187/2s" duration="14/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1386/5s" start="3697/6s" duration="188/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="4346/15s" start="19007/30s" duration="224/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="914/3s" start="3248/5s" duration="31/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="4601/15s" start="9883/15s" duration="131/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1919/6s" start="6801/10s" duration="92/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="9779/30s" start="20759/30s" duration="47/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1669/5s" start="10709/15s" duration="11/2s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="3393/10s" start="21619/30s" duration="85/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="5302/15s" start="22079/30s" duration="181/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="11509/30s" start="12722/15s" duration="41/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="11591/30s" start="12824/15s" duration="51/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="5872/15s" start="4324/5s" duration="53/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="6137/15s" start="4527/5s" duration="11/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="819/2s" start="27269/30s" duration="5/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1231/3s" start="4561/5s" duration="49/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="12359/30s" start="13972/15s" duration="13/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2477/6s" start="28123/30s" duration="332/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="13049/30s" start="4813/5s" duration="82/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="13213/30s" start="14534/15s" duration="527/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="458s" start="5983/6s" duration="401/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="14141/30s" start="5153/5s" duration="17/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="7079/15s" start="31039/30s" duration="73/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="14231/30s" start="15628/15s" duration="31s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="15161/30s" start="32321/30s" duration="601/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2627/5s" start="10987/10s" duration="37/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="5291/10s" start="16556/15s" duration="158/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="16189/30s" start="11207/10s" duration="55/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2744/5s" start="11331/10s" duration="3/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2747/5s" start="11349/10s" duration="563/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="3409/6s" start="11763/10s" duration="31/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2846/5s" start="35353/30s" duration="13/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="17089/30s" start="17896/15s" duration="41/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="571s" start="36407/30s" duration="8/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="8573/15s" start="6104/5s" duration="103/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="3491/6s" start="12421/10s" duration="34/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="3559/6s" start="18914/15s" duration="34/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="17999/30s" start="3809/3s" duration="17/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="18169/30s" start="38327/30s" duration="271/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1844/3s" start="13067/10s" duration="97/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="6179/10s" start="19741/15s" duration="7/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="18551/30s" start="19781/15s" duration="749/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1930/3s" start="40687/30s" duration="3/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="9659/15s" start="13611/10s" duration="77/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1978/3s" start="8299/6s" duration="457/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="20237/30s" start="14351/10s" duration="256/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="20749/30s" start="22199/15s" duration="22/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="20969/30s" start="44681/30s" duration="227/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="10598/15s" start="46781/30s" duration="62/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="10784/15s" start="23591/15s" duration="625/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="8231/10s" start="3393/2s" duration="361/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="5083/6s" start="52627/30s" duration="2/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="25427/30s" start="8839/5s" duration="8/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="8481/10s" start="53069/30s" duration="1051/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="13247/15s" start="18633/10s" duration="11/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="1767/2s" start="5596/3s" duration="1/2s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="884s" start="9348/5s" duration="41/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="5345/6s" start="28328/15s" duration="167/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="4482/5s" start="18979/10s" duration="77/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="26969/30s" start="57053/30s" duration="53/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="27287/30s" start="11497/6s" duration="62/3s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="27907/30s" start="3883/2s" duration="119/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="14251/15s" start="29624/15s" duration="251/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="4834/5s" start="19953/10s" duration="331/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="5867/6s" start="60751/30s" duration="7/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="14678/15s" start="30548/15s" duration="4/5s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="2938/3s" start="30569/15s" duration="59/10s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="29557/30s" start="6134/3s" duration="19/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="14788/15s" start="10231/5s" duration="154/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="14942/15s" start="61787/30s" duration="22/15s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="4988/5s" start="20633/10s" duration="29/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="29957/30s" start="4135/2s" duration="377/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="15167/15s" start="20813/10s" duration="133/30s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="30467/30s" start="20863/10s" duration="11/6s"/>
+          <ref-clip name="2026-09-30 17-08-05 — Source" ref="r4" offset="5087/5s" start="31331/15s" duration="13/30s"/>
+        </spine>
+      </sequence>
+    </project>
+  </event>
+</fcpxml>

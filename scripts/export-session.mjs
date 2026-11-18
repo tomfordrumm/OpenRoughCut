@@ -1,0 +1,20 @@
+// Re-export saved decisions without repeating analysis; never overwrite the session.
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { probeMedia } from '@openroughcut/core/media.js';
+import { buildPlan } from '@openroughcut/core/plan.js';
+import { resolveProjectResolution } from '@openroughcut/core/project-resolution.js';
+import { createFcpxml } from '@openroughcut/core/fcpxml.js';
+const [sessionPath, outputPath, choice] = process.argv.slice(2);
+if (!sessionPath || !outputPath || !choice) throw new Error('Usage: node scripts/export-session.mjs session.roughcut new-output.fcpxml full-hd|source|4k');
+const session = JSON.parse(await readFile(sessionPath, 'utf8'));
+if (![1,2].includes(session.version) || !Array.isArray(session.analysis?.automaticRemovals)) throw new Error('Unsupported saved session');
+const media = await probeMedia(session.sourcePath, {ffprobeCommand: process.env.FFPROBE || 'ffprobe'});
+const plan = buildPlan({ ...session.analysis, media, settings: { keepPause: session.settings?.keepPause } }, session.manualOverrides ?? []);
+const parsed = path.parse(session.sourcePath);
+const clipName = parsed.base;
+if (!plan.keeps.length) throw new Error("The edit plan removes the entire recording");
+const projectResolution = resolveProjectResolution(media, choice);
+const document = createFcpxml({inputPath: session.sourcePath, clipName, compoundName: `${parsed.name} — Source`, projectName: `${parsed.name} — Rough Cut`, media, projectResolution, keeps: plan.keeps});
+await writeFile(outputPath, document, {flag:'wx'});
+console.log(JSON.stringify({source: {width:media.width,height:media.height},timeline:projectResolution,retainedRanges:plan.keeps.length,outputPath}));
