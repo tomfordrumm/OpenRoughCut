@@ -2,6 +2,11 @@ name: Build candidate (no publication)
 
 on:
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Build and verify the Windows x64 candidate only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ jobs:
       - run: npm run app:build
 
   mac:
+    if: ${{ !inputs.windows_only }}
     needs: validate
     runs-on: macos-14
     strategy:
@@ -58,6 +64,7 @@ jobs:
   windows:
     needs: validate
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -65,6 +72,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - name: Prepare bundled Electron license files
+        run: node -e "require('electron')"
       - run: node apps/desktop/scripts/prepare-release-runtime.mjs win32 x64
       - name: Build Windows installer
         shell: pwsh
@@ -87,17 +96,24 @@ jobs:
             }
             exit $exitCode
           }
-      - name: Upload Windows build log
+      - name: Verify installed Windows app
+        shell: pwsh
+        run: apps/desktop/scripts/smoke-windows-installer.ps1
+      - name: Upload Windows diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-build-log
-          path: ${{ runner.temp }}/windows-build.log
+          path: |
+            ${{ runner.temp }}/windows-build.log
+            ${{ runner.temp }}/orc-windows-smoke/profile/logs/openroughcut.log
           if-no-files-found: warn
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-windows-x64
-          path: release/OpenRoughCut-*-win-x64.exe
+          path: |
+            release/OpenRoughCut-*-win-x64.exe
+            release/SHA256SUMS-win-x64.txt
           if-no-files-found: error
           retention-days: 7
