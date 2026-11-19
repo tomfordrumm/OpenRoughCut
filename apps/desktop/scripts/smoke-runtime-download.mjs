@@ -9,7 +9,8 @@ const target = `${process.platform}-${process.arch}`;
 if (!supported.has(target)) throw new Error(`Runtime download smoke testing is not supported on ${target}.`);
 
 const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "roughcut-runtime-smoke-"));
-const executable = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+const windows = process.platform === "win32";
+const executables = windows ? ["ffmpeg.exe", "ffprobe.exe"] : ["ffmpeg"];
 let lastBucket = -1;
 
 try {
@@ -19,7 +20,7 @@ try {
     runtimeDirectory: path.join(temporaryDirectory, "runtime", "bin"),
     modelsDirectory: path.join(temporaryDirectory, "models"),
     ffmpeg: { ready: false },
-    ffprobe: { ready: true },
+    ffprobe: { ready: !windows },
     model: { ready: true },
     vadModel: { ready: true },
   }, {
@@ -31,8 +32,10 @@ try {
       }
     },
   });
-  const installed = path.join(temporaryDirectory, "runtime", "bin", executable);
-  await run(installed, ["-version"]);
+  for (const executable of executables) {
+    const installed = path.join(temporaryDirectory, "runtime", "bin", executable);
+    await run(installed, ["-version"]);
+  }
   console.log(`Verified first-run editing-engine download for ${target}.`);
 } finally {
   await rm(temporaryDirectory, { recursive: true, force: true });

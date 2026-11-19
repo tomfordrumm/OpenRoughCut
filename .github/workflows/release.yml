@@ -99,6 +99,8 @@ jobs:
       - name: Verify installed Windows app
         shell: pwsh
         run: apps/desktop/scripts/smoke-windows-installer.ps1
+      - name: Check first-run editing engine download
+        run: npm run smoke:runtime-download
       - name: Upload Windows diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -98,5 +98,6 @@ if ($uninstall.ExitCode -ne 0 -or (Test-Path $app.FullName)) { throw "The instal
 Write-Output "Silent uninstall removed the installed app."
 
 $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-"$hash  $($installer.Name)" | Set-Content release/SHA256SUMS-win-x64.txt -Encoding ascii
+$checksumPath = Join-Path $PWD.Path "release/SHA256SUMS-win-x64.txt"
+[IO.File]::WriteAllText($checksumPath, "$hash  $($installer.Name)`n", [Text.Encoding]::ASCII)
 Write-Output "SHA-256 $hash"
