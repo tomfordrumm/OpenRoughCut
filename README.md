@@ -76,3 +76,10 @@ npm run app
 
 - [CLI usage, project workflow, and repository layout](docs/USAGE.md)
 - [Packaging, signing, and release verification](docs/RELEASING.md)
+
+## License
+
+OpenRoughCut's own code is available under the [MIT License](LICENSE).
+Third-party components are distributed under their respective licenses. See the
+[bundled notices](apps/desktop/build/THIRD-PARTY-NOTICES.txt) and
+[runtime inventory](docs/RELEASING.md#runtime-layout).

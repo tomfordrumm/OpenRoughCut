@@ -11,6 +11,7 @@ const packageDocument = JSON.parse(await readFile(path.join(desktopRoot, "packag
 
 await rm(stagingRoot, { recursive: true, force: true });
 await mkdir(stagingRoot, { recursive: true });
+await cp(path.join(repositoryRoot, "LICENSE"), path.join(stagingRoot, "LICENSE"));
 for (const directory of ["dist", "electron", "src"]) {
   await cp(path.join(desktopRoot, directory), path.join(stagingRoot, directory), { recursive: true });
 }
