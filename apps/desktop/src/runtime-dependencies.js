@@ -294,7 +294,9 @@ export async function extractRuntimeFiles(archivePath, files, destinationDirecto
       "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
       `$archivePath = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${utf16Base64(archivePath)}'))`,
       `$archiveDirectory = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${utf16Base64(archiveDirectory)}'))`,
-      "Expand-Archive -LiteralPath $archivePath -DestinationPath $archiveDirectory -Force",
+      // Use the overload available in Windows PowerShell's .NET Framework.
+      "Add-Type -AssemblyName System.IO.Compression.FileSystem",
+      "[System.IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $archiveDirectory)",
     ].join("; ");
     await runCommand("powershell.exe", [
       "-NoLogo",

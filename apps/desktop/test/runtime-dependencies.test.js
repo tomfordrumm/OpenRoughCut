@@ -126,7 +126,8 @@ test("Windows runtime extraction passes complex paths in an encoded PowerShell c
           .map((match) => Buffer.from(match[1], "base64").toString("utf16le"));
         assert.deepEqual(encodedPaths, [archive, path.join(destination, "archive")]);
         assert.equal(script.includes(archive), false);
-        assert.match(script, /Expand-Archive -LiteralPath \$archivePath -DestinationPath \$archiveDirectory -Force/);
+        assert.match(script, /Add-Type -AssemblyName System\.IO\.Compression\.FileSystem/);
+        assert.match(script, /\[System\.IO\.Compression\.ZipFile\]::ExtractToDirectory\(\$archivePath, \$archiveDirectory\)/);
         const extractedRoot = path.join(destination, "archive");
         await mkdir(path.join(extractedRoot, "release", "bin"), { recursive: true });
         await writeFile(path.join(extractedRoot, "release", "bin", "ffmpeg.exe"), body);
